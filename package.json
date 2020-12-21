@@ -1,0 +1,31 @@
+{
+  "name": "@cardinal/barcode",
+  "version": "1.0.0",
+  "description": "Cardinal barcode components.",
+  "main": "./build/dist/index.cjs.js",
+  "module": "./build/dist/index.js",
+  "es2015": "./build/dist/esm/index.mjs",
+  "es2017": "./build/dist/esm/index.mjs",
+  "types": "./build/dist/types/index.d.ts",
+  "collection": "./build/dist/collection/collection-manifest.json",
+  "collection:main": "./build/dist/collection/index.js",
+  "unpkg": "./build/dist/cardinal/cardinal.js",
+  "files": [
+    "build/dist"
+  ],
+  "scripts": {
+    "build": "npm i @cardinal/core && stencil build --prod",
+    "dev": "npm i @cardinal/core && stencil build --dev",
+    "generate": "stencil generate"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@cardinal/core": "file:../core",
+    "@stencil/core": "^2.3.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/webcardinal/cardinal-barcode.git"
+  },
+  "license": "MIT"
+}
