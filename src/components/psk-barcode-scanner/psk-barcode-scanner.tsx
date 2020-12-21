@@ -220,12 +220,12 @@ export class PskBarcodeScanner {
       }
     }
     const cardinal = (window.cardinal && window.cardinal.extended
-        ? window.cardinal.extended
+        ? window.cardinal.extended + '/barcode'
         : 'cardinal/extended/barcode'
     );
 
     return [
-      <script async src={`${cardinal}/lib/zxing.js`}/>,
+      <script async src={`${cardinal}/libs/zxing.js`}/>,
       <div title={this.title} style={style.barcodeWrapper}>
         {
           this.isCameraAvailable && !this.isScanDone
