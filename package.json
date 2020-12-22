@@ -14,8 +14,8 @@
     "build/dist"
   ],
   "scripts": {
-    "build": "npm i @cardinal/core && stencil build --prod",
-    "dev": "npm i @cardinal/core && stencil build --dev",
+    "build": "npm i @cardinal/core --save-dev && stencil build --prod",
+    "dev": "stencil build --dev",
     "generate": "stencil generate"
   },
   "dependencies": {},
