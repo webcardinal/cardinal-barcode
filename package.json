@@ -1,7 +1,7 @@
 {
   "name": "@cardinal/barcode",
   "version": "1.0.0",
-  "description": "Cardinal barcode components.",
+  "description": "PskCardinal barcode components.",
   "main": "./build/dist/index.cjs.js",
   "module": "./build/dist/index.js",
   "es2015": "./build/dist/esm/index.mjs",
@@ -9,7 +9,7 @@
   "types": "./build/dist/types/index.d.ts",
   "collection": "./build/dist/collection/collection-manifest.json",
   "collection:main": "./build/dist/collection/index.js",
-  "unpkg": "./build/dist/cardinal/cardinal.js",
+  "unpkg": "./build/dist/webcardinal/webcardinal.js",
   "files": [
     "build/dist"
   ],
