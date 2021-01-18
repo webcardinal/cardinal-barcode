@@ -20,7 +20,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@cardinal/core": "file:../core",
+    "@cardinal/core": "https://github.com/webcardinal/cardinal-core",
     "@stencil/core": "^2.3.0"
   },
   "repository": {
