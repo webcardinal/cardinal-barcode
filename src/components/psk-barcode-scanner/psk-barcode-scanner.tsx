@@ -1,5 +1,5 @@
 import { Component, Prop, State, Element, h } from '@stencil/core';
-import { BindModel, CustomTheme, TableOfContentProperty } from '@cardinal/core';
+import { BindModel, CustomTheme, TableOfContentProperty } from '@cardinal/internals';
 import { VideoOverlay } from './overlays';
 import audio from './audio';
 

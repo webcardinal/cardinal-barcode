@@ -1,6 +1,6 @@
 import { Component, Element, h, Prop, State, Watch } from '@stencil/core';
-import { CustomTheme, BindModel, TableOfContentProperty } from "@cardinal/core";
-import { stringToBoolean } from "@cardinal/core";
+import { CustomTheme, BindModel, TableOfContentProperty } from "@cardinal/internals";
+import { stringToBoolean } from "@cardinal/internals";
 
 import bwipjs from "../../../extended/libs/bwip.js";
 
