@@ -15,7 +15,7 @@
   ],
   "scripts": {
     "internals": "cd node_modules/@cardinal/internals && npm install && npm run build",
-    "build": "npm install --save-dev @cardinal/internals && stencil build --prod",
+    "build": "stencil build --prod",
     "dev": "stencil build --dev",
     "generate": "stencil generate"
   },
