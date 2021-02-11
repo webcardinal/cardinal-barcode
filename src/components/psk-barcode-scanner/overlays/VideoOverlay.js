@@ -54,8 +54,8 @@ export default class VideoOverlay extends CanvasOverlay {
     if (this.overlayCanvas.getContext) {
       let ctx = this.overlayCanvas.getContext('2d');
       ctx.lineWidth = 5;
-      ctx.strokeStyle = '#48d96099'
-      ctx.fillStyle = '#48d96099';
+      ctx.strokeStyle = 'rgba(72, 217, 96, 0.4)';
+      ctx.fillStyle = 'rgba(72, 217, 96, 0.4)';
 
       ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
       ctx.beginPath();
@@ -72,7 +72,7 @@ export default class VideoOverlay extends CanvasOverlay {
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
-      ctx.strokeStyle = '#48d960FF'
+      ctx.strokeStyle = 'rgb(72, 217, 96)';
 
       this.addLensCorners(ctx, xPadding, yPadding, frameWidth, ANGLE_WIDTH);
 
@@ -84,24 +84,13 @@ export default class VideoOverlay extends CanvasOverlay {
 
   drawLensCanvas() {
     let ctx = this.lensCanvas.getContext('2d');
-    ctx.beginPath();
-
+    let dimensions = this.dimensions;
     let polygonPoints = [
       [0, 0],
-      [this.dimensions.width, 0],
-      [this.dimensions.width, this.dimensions.height],
-      [0, this.dimensions.height]
+      [dimensions.width, 0],
+      [dimensions.width, dimensions.height],
+      [0, dimensions.height]
     ];
-
-    ctx.moveTo(polygonPoints[0][0], polygonPoints[0][1]);
-    ctx.lineTo(polygonPoints[1][0], polygonPoints[1][1]);
-    ctx.lineTo(polygonPoints[2][0], polygonPoints[2][1]);
-    ctx.lineTo(polygonPoints[3][0], polygonPoints[3][1]);
-    ctx.lineTo(polygonPoints[0][0], polygonPoints[0][1]);
-    ctx.closePath();
-
-    let dimensions = this.dimensions;
-
     let xPadding = (dimensions.width - dimensions.frame) / 2;
     let yPadding = (dimensions.height - dimensions.frame) / 2;
     let frameWidth = dimensions.frame;
@@ -111,6 +100,17 @@ export default class VideoOverlay extends CanvasOverlay {
       [xPadding + frameWidth, yPadding + frameWidth],
       [xPadding + frameWidth, yPadding]
     ];
+
+    ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+
+    ctx.beginPath();
+    ctx.moveTo(polygonPoints[0][0], polygonPoints[0][1]);
+    ctx.lineTo(polygonPoints[1][0], polygonPoints[1][1]);
+    ctx.lineTo(polygonPoints[2][0], polygonPoints[2][1]);
+    ctx.lineTo(polygonPoints[3][0], polygonPoints[3][1]);
+    ctx.lineTo(polygonPoints[0][0], polygonPoints[0][1]);
+    ctx.closePath();
+
     ctx.moveTo(holePoints[0][0], holePoints[0][1]);
     ctx.lineTo(holePoints[1][0], holePoints[1][1]);
     ctx.lineTo(holePoints[2][0], holePoints[2][1]);
@@ -118,9 +118,7 @@ export default class VideoOverlay extends CanvasOverlay {
     ctx.lineTo(holePoints[0][0], holePoints[0][1]);
     ctx.closePath();
 
-    ctx.fillStyle = '#77777799';
-    ctx.strokeStyle = '#FFFFFFFF'
-    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.fill();
 
     this.addLensCorners(ctx, xPadding, yPadding, frameWidth, ANGLE_WIDTH);
@@ -149,6 +147,8 @@ export default class VideoOverlay extends CanvasOverlay {
     ctx.lineTo(xPadding, yPadding + frameWidth);
     ctx.lineTo(xPadding + angleWidth, yPadding + frameWidth);
 
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255)';
     ctx.stroke();
   }
 }
