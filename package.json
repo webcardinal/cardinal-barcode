@@ -14,14 +14,13 @@
     "build/dist"
   ],
   "scripts": {
-    "internals": "cd node_modules/@cardinal/internals && npm install && npm run build",
     "build": "stencil build --prod",
     "dev": "stencil build --dev",
+    "docs": "stencil build --docs",
     "generate": "stencil generate"
   },
   "dependencies": {},
   "devDependencies": {
-    "@cardinal/internals": "https://github.com/webcardinal/cardinal-internals",
     "@stencil/core": "^2.3.0"
   },
   "repository": {
