@@ -1,0 +1,10 @@
+{
+  "psk-barcode-generator": {
+    "source": "@cardinal/barcode",
+    "path": "components/psk-barcode-generator.json"
+  },
+  "psk-barcode-scanner": {
+    "source": "@cardinal/barcode",
+    "path": "components/psk-barcode-scanner.json"
+  }
+}
