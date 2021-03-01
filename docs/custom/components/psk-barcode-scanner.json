@@ -1,9 +1,6 @@
 {
-  "dirPath": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-scanner",
   "filePath": "./src/components/psk-barcode-scanner/psk-barcode-scanner.tsx",
   "fileName": "psk-barcode-scanner.tsx",
-  "readmePath": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-scanner/readme.md",
-  "usagesDir": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-scanner/usage",
   "tag": "psk-barcode-scanner",
   "usage": {},
   "docs": "",

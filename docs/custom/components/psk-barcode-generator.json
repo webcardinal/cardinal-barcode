@@ -1,9 +1,6 @@
 {
-  "dirPath": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-generator",
   "filePath": "./src/components/psk-barcode-generator/psk-barcode-generator.tsx",
   "fileName": "psk-barcode-generator.tsx",
-  "readmePath": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-generator/readme.md",
-  "usagesDir": "D:/Work/webcardinal-app-starter/.webcardinal/components/cardinal-barcode/src/components/psk-barcode-generator/usage",
   "tag": "psk-barcode-generator",
   "usage": {},
   "docs": "",
