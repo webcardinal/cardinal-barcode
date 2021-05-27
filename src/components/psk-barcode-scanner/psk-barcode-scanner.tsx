@@ -219,13 +219,11 @@ export class PskBarcodeScanner {
         fontSize: '15px'
       }
     }
-    const cardinal = (window.cardinal && window.cardinal.extended
-        ? window.cardinal.extended + '/barcode'
-        : 'cardinal/extended/barcode'
-    );
+
+    const zxingPath = "/webcardinal/extended/cardinal-barcode/libs/zxing.js";
 
     return [
-      <script async src={`${cardinal}/libs/zxing.js`}/>,
+      <script async src={zxingPath}/>,
       <div title={this.title} style={style.barcodeWrapper}>
         {
           this.isCameraAvailable && !this.isScanDone
