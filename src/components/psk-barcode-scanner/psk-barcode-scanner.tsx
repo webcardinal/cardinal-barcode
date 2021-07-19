@@ -65,8 +65,10 @@ export class PskBarcodeScanner {
     const scannerContainer = this.element.querySelector('#scanner-container');
 
     this.overlay = new VideoOverlay(scannerContainer, videoElement);
-    this.overlay.createOverlaysCanvases('lensCanvas', 'overlayCanvas');
-    this.overlay.drawLensCanvas();
+    const success = this.overlay.createOverlaysCanvases('lensCanvas', 'overlayCanvas');
+    if(success){
+        this.overlay.drawLensCanvas();
+    }
   }
 
   private cleanupOverlays() {
