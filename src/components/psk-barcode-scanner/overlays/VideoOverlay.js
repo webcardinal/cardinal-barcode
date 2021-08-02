@@ -20,6 +20,7 @@ export default class VideoOverlay extends CanvasOverlay {
   createOverlaysCanvases(lensCanvas, overlayCanvas) {
     this.lensCanvas = this.addCanvasToView(lensCanvas);
     this.overlayCanvas = this.addCanvasToView(overlayCanvas);
+    return !!this.lensCanvas && !!this.overlayCanvas;
   }
 
   removeOverlays() {
