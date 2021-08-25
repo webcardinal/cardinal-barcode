@@ -235,7 +235,7 @@ export class PskBarcodeScanner {
             }
         }
 
-    const zxingPath = "/webcardinal/extended/cardinal-barcode/libs/zxing.js";
+    const zxingPath = "webcardinal/extended/cardinal-barcode/libs/zxing.js";
 
         return [
       <script async src={zxingPath}/>,
