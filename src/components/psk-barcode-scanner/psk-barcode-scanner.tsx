@@ -132,14 +132,19 @@ export class PskBarcodeScanner {
 
                     if (this.modelHandler) {
                         audio.play();
-                        this.overlay.drawOverlay(result.resultPoints);
+                        if (this.overlay) {
+                            this.overlay.drawOverlay(result.resultPoints);
+                        }
                         this.modelHandler.updateModel('data', result.text);
                         this.isScanDone = true;
                         this.status = STATUS.DONE;
 
                         setTimeout(_ => {
                             this.codeReader.reset();
-                            this.overlay.removeOverlays();
+                            if (this.overlay) {
+                                this.overlay.removeOverlays();
+                            }
+                            this.hideSlotItems();
                         }, DELAY_AFTER_RESULT);
                     }
                 }
