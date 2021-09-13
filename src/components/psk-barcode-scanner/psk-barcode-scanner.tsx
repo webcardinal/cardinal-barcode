@@ -1,11 +1,11 @@
-import {Component, Prop, State, Element, h} from '@stencil/core';
+import {Component, Prop, State, Element, Method, h} from '@stencil/core';
 import {BindModel, CustomTheme, TableOfContentProperty} from '@cardinal/internals';
-import {VideoOverlay} from './overlays';
 import audio from './audio';
 
 const INTERVAL_ZXING_LOADED = 300;
 const INTERVAL_BETWEEN_SCANS = 2000;
 const DELAY_AFTER_RESULT = 500;
+const DELAY_FOR_CUSTOM_DRAWING = 500;
 const STATUS = {
     IN_PROGRESS: "Camera detection in progress...",
     DONE: "Scan done.",
@@ -13,7 +13,8 @@ const STATUS = {
 }
 
 @Component({
-    tag: 'psk-barcode-scanner'
+    tag: 'psk-barcode-scanner',
+    shadow: true
 })
 export class PskBarcodeScanner {
 
@@ -21,7 +22,7 @@ export class PskBarcodeScanner {
 
     @CustomTheme()
 
-    @Element() element;
+    @Element() host: HTMLElement;
 
     @TableOfContentProperty({
         description: `The data-model that will be updated with the retrieved data from the scanner.`,
@@ -37,6 +38,13 @@ export class PskBarcodeScanner {
     })
     @Prop() title: string = '';
 
+    @TableOfContentProperty({
+        description: `Decides if the square canvas should be rendered on the screen.`,
+        isMandatory: false,
+        propertyType: `boolean`
+    })
+    @Prop() hideDrawing: false;
+
     @State() ZXing = null;
     @State() activeDeviceId: string | null = null;
     @State() status = STATUS.IN_PROGRESS;
@@ -47,27 +55,47 @@ export class PskBarcodeScanner {
     private devices = [];
     private isScanDone = false;
     private isComponentDisconnected = false;
+    private slotChildren: HTMLCollection;
 
     constructor() {
         window.addEventListener('resize', _ => {
             this.cleanupOverlays();
             this.drawOverlays();
-            // this.startScanning(this.activeDeviceId);
         });
     }
 
-    private drawOverlays() {
-        if (!this.element) {
+    private async drawOverlays() {
+        if (!this.host || !this.host.shadowRoot) {
             return;
         }
 
-        const videoElement = this.element.querySelector('#video');
-        const scannerContainer = this.element.querySelector('#scanner-container');
+        if (this.hideDrawing) {
+            return;
+        }
 
+        const { shadowRoot } = this.host;
+
+        const videoElement = shadowRoot.querySelector('#video');
+        const scannerContainer = shadowRoot.querySelector('#scanner-container');
+        const { VideoOverlay } = await import('./overlays');
         this.overlay = new VideoOverlay(scannerContainer, videoElement);
         const success = this.overlay.createOverlaysCanvases('lensCanvas', 'overlayCanvas');
         if (success) {
             this.overlay.drawLensCanvas();
+        }
+    }
+
+    private showSlotItems(timeout = 0) {
+        setTimeout(() => {
+            for (let i = 0; i < this.slotChildren.length; i++) {
+                this.slotChildren[i].removeAttribute('hidden');
+            }
+        }, timeout)
+    }
+
+    private hideSlotItems() {
+        for (let i = 0; i < this.slotChildren.length; i++) {
+            this.slotChildren[i].setAttribute('hidden', '');
         }
     }
 
@@ -78,7 +106,7 @@ export class PskBarcodeScanner {
     }
 
     private startScanning(deviceId) {
-        const videoElement = this.element.querySelector('#video');
+        const videoElement = this.host.shadowRoot.querySelector('#video');
 
         const constraints = {
             video: {
@@ -116,13 +144,16 @@ export class PskBarcodeScanner {
                     }
                 }
                 if (err && !(err instanceof this.ZXing.NotFoundException)) {
+                    this.hideSlotItems();
                     console.error(err);
                 }
             });
+            this.showSlotItems(DELAY_FOR_CUSTOM_DRAWING);
         }
     }
 
-    private switchCamera() {
+    @Method()
+    switchCamera() {
         let devices = [undefined];
 
         for (const device of this.devices) {
@@ -148,6 +179,9 @@ export class PskBarcodeScanner {
                 setTimeout(tick, INTERVAL_ZXING_LOADED);
             }
         };
+
+        this.slotChildren = this.host.children;
+        this.hideSlotItems();
 
         tick();
     }
@@ -235,24 +269,30 @@ export class PskBarcodeScanner {
             }
         }
 
-    const zxingPath = "webcardinal/extended/cardinal-barcode/libs/zxing.js";
+        const zxingPath = "webcardinal/extended/cardinal-barcode/libs/zxing.js";
 
         return [
-      <script async src={zxingPath}/>,
-            <div title={this.title} style={style.barcodeWrapper}>
-                <div id="scanner-container" style={style.videoWrapper}>
+            <script async src={zxingPath}/>,
+            <div title={this.title} part="base" style={style.barcodeWrapper}>
+                <div id="scanner-container" part="container" style={style.videoWrapper}>
                     <input type="file" accept="video/*" capture="camera" style={style.input}/>
-                    <video id="video" muted autoplay playsinline={true} style={style.video}/>
+                    <video id="video" part="video" muted autoplay playsinline={true} style={style.video}/>
                     {
                         this.isScanDone ? <div style={style.statusDiv}>
                             <div class="spinner-border text-light" role="status">
                                 <span class="sr-only">Loading... </span>
                             </div>
-                        </div> : <div></div>
+                        </div> : null
                     }
-                    <button onClick={_ => this.switchCamera()} style={style.button}>Change camera</button>
+                    {
+                        this.hideDrawing ? null : (
+                            <button onClick={_ => this.switchCamera()}
+                                    part="button" style={style.button}>Change camera</button>
+                        )
+                    }
                 </div>
-            </div>
+            </div>,
+            <slot/>
         ];
     }
 }
