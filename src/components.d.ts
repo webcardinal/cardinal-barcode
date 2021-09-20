@@ -16,8 +16,9 @@ export namespace Components {
     interface PskBarcodeScanner {
         "data": any;
         "hideDrawing": false;
+        "noLogs": false;
+        "snapVideo": false;
         "switchCamera": () => Promise<void>;
-        "title": string;
     }
 }
 declare global {
@@ -49,7 +50,8 @@ declare namespace LocalJSX {
     interface PskBarcodeScanner {
         "data"?: any;
         "hideDrawing"?: false;
-        "title"?: string;
+        "noLogs"?: false;
+        "snapVideo"?: false;
     }
     interface IntrinsicElements {
         "psk-barcode-generator": PskBarcodeGenerator;

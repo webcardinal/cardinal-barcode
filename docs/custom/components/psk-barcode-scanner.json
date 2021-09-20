@@ -5,7 +5,7 @@
   "usage": {},
   "docs": "",
   "docsTags": [],
-  "encapsulation": "none",
+  "encapsulation": "shadow",
   "dependents": [],
   "dependencies": [],
   "dependencyGraph": {},
@@ -21,6 +21,38 @@
       "values": [
         {
           "type": "any"
+        }
+      ],
+      "optional": false,
+      "required": false
+    },
+    {
+      "name": "hideDrawing",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "hide-drawing",
+      "reflectToAttr": false,
+      "docs": "",
+      "docsTags": [],
+      "values": [
+        {
+          "type": "boolean"
+        }
+      ],
+      "optional": false,
+      "required": false
+    },
+    {
+      "name": "snapVideo",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "snap-video",
+      "reflectToAttr": false,
+      "docs": "",
+      "docsTags": [],
+      "values": [
+        {
+          "type": "boolean"
         }
       ],
       "optional": false,
@@ -44,10 +76,39 @@
       "required": false
     }
   ],
-  "methods": [],
+  "methods": [
+    {
+      "name": "switchCamera",
+      "returns": {
+        "type": "Promise<void>",
+        "docs": ""
+      },
+      "signature": "switchCamera() => Promise<void>",
+      "parameters": [],
+      "docs": "",
+      "docsTags": []
+    }
+  ],
   "events": [],
   "styles": [],
   "slots": [],
-  "parts": [],
+  "parts": [
+    {
+      "name": "base",
+      "docs": ""
+    },
+    {
+      "name": "button",
+      "docs": ""
+    },
+    {
+      "name": "container",
+      "docs": ""
+    },
+    {
+      "name": "video",
+      "docs": ""
+    }
+  ],
   "listeners": []
 }
