@@ -7,10 +7,11 @@ const INTERVAL_BETWEEN_SCANS = 2000;
 const DELAY_AFTER_RESULT = 500;
 
 enum STATUS {
-    INIT = "Initializing camera...",
+    INIT = "Initializing component...",
+    LOAD_CAMERAS = "Detecting your cameras...",
     IN_PROGRESS = "Camera detection in progress...",
     DONE = "Scan done.",
-    NO_DETECTION = "No camera detected."
+    NO_DETECTION = "No camera detected.",
 }
 
 const style = {
@@ -141,8 +142,11 @@ export class PskBarcodeScanner {
             case STATUS.DONE:
                 element = this.createCustomizedElement('done');
                 break;
+            case STATUS.LOAD_CAMERAS:
+                element = this.createCustomizedElement('feedback');
+                break;
             default:
-                element = this.createCustomizedElement('active')
+                element = this.createCustomizedElement('active');
         }
 
         const t = createElement('div');
@@ -188,56 +192,69 @@ export class PskBarcodeScanner {
             };
         }
 
-        if (this.status === STATUS.IN_PROGRESS) {
+        if (this.status === STATUS.LOAD_CAMERAS) {
             this.cleanupOverlays();
             this.drawOverlays();
+            // this.status = STATUS.IN_PROGRESS;
 
             this.codeReader.reset();
-            this.codeReader.decodeFromConstraints(constraints, videoElement, (result, err) => {
-                if (result && this.status === STATUS.IN_PROGRESS) {
-                    if (!this.noLogs) {
-                        console.log('Scanned data:', result);
-                    }
 
-                    if (this.modelHandler) {
-                        this.modelHandler.updateModel('data', result.text);
-                        this.status = STATUS.DONE;
-                        audio.play();
-
-                        if (this.overlay) {
-                            this.overlay.drawOverlay(result.resultPoints);
-                        }
-
-                        setTimeout(_ => {
-                            if (this.snapVideo) {
-                                const video = this.host.shadowRoot.querySelector('video')
-                                const h = video.videoHeight;
-                                const w = video.videoWidth;
-
-                                const canvas = document.createElement("canvas");
-                                canvas.width = w;
-                                canvas.height = h;
-
-                                const context = canvas.getContext("2d");
-                                canvas.style.width = '100%';
-                                canvas.style.height = '100%';
-                                canvas.style.objectFit = 'cover';
-
-                                context.drawImage(video, 0, 0, w, h);
-                                video.parentElement.insertBefore(canvas, video);
-                            }
-
-                            this.codeReader.reset();
-                            if (this.overlay) {
-                                this.overlay.removeOverlays();
-                            }
-                        }, DELAY_AFTER_RESULT);
-                    }
-                }
-                if (err && !(err instanceof this.ZXing.NotFoundException)) {
-                    console.error(err);
-                }
+            this.codeReader.playVideoOnLoad(videoElement, () => {
+                this.status = STATUS.IN_PROGRESS;
+                videoElement.removeAttribute('hidden');
             });
+
+            navigator.mediaDevices.getUserMedia(constraints)
+                .then(() => {
+                    this.codeReader.decodeFromConstraints(constraints, videoElement, (result, err) => {
+                        if (result && this.status === STATUS.IN_PROGRESS) {
+                            if (!this.noLogs) {
+                                console.log('Scanned data:', result);
+                            }
+
+                            if (this.modelHandler) {
+                                this.modelHandler.updateModel('data', result.text);
+                                this.status = STATUS.DONE;
+                                audio.play();
+
+                                if (this.overlay) {
+                                    this.overlay.drawOverlay(result.resultPoints);
+                                }
+
+                                setTimeout(_ => {
+                                    if (this.snapVideo) {
+                                        const video = this.host.shadowRoot.querySelector('video')
+                                        const h = video.videoHeight;
+                                        const w = video.videoWidth;
+
+                                        const canvas = document.createElement("canvas");
+                                        canvas.width = w;
+                                        canvas.height = h;
+
+                                        const context = canvas.getContext("2d");
+                                        canvas.style.width = '100%';
+                                        canvas.style.height = '100%';
+                                        canvas.style.objectFit = 'cover';
+
+                                        context.drawImage(video, 0, 0, w, h);
+                                        video.parentElement.insertBefore(canvas, video);
+                                    }
+
+                                    this.codeReader.reset();
+                                    if (this.overlay) {
+                                        this.overlay.removeOverlays();
+                                    }
+                                }, DELAY_AFTER_RESULT);
+                            }
+                        }
+                        if (err && !(err instanceof this.ZXing.NotFoundException)) {
+                            console.error(err);
+                        }
+                    });
+                })
+                .catch(err => {
+                    console.log('getUserMedia', err);
+                });
         }
     }
 
@@ -264,7 +281,7 @@ export class PskBarcodeScanner {
             if (window['ZXing'] && !this.ZXing && !this.codeReader) {
                 this.ZXing = window['ZXing'];
                 this.codeReader = new this.ZXing.BrowserMultiFormatReader(null, INTERVAL_BETWEEN_SCANS);
-                this.status = STATUS.IN_PROGRESS;
+                this.status = STATUS.LOAD_CAMERAS;
                 if ((!this.host || !this.host.isConnected) && this.codeReader) {
                     this.status = STATUS.INIT;
                     this.codeReader.reset();
@@ -287,6 +304,7 @@ export class PskBarcodeScanner {
         if (this.devices.length === 0 || !this.activeDeviceId) {
             try {
                 this.devices = await this.codeReader.listVideoInputDevices();
+                // this.status = STATUS.IN_PROGRESS;
             } catch (error) {
                 // console.error(error);
             }
@@ -298,7 +316,7 @@ export class PskBarcodeScanner {
     }
 
     async componentDidRender() {
-        if (this.host.isConnected && this.status === STATUS.IN_PROGRESS) {
+        if (this.host.isConnected && this.status === STATUS.LOAD_CAMERAS) {
             this.startScanning(this.activeDeviceId);
 
             const defaultButton = this.host.shadowRoot.querySelector('[part=active]') as HTMLButtonElement;
@@ -320,7 +338,7 @@ export class PskBarcodeScanner {
             <div title={this.host.getAttribute('title')} part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
                     <input type="file" accept="video/*" capture="environment" style={style.input}/>
-                    <video id="video" part="video" muted autoplay playsinline style={style.video}/>
+                    <video id="video" part="video" muted autoplay playsinline hidden style={style.video}/>
                     <div id="content" part="content" innerHTML={this.renderContent()}/>
                 </div>
             </div>

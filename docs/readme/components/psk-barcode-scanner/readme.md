@@ -7,12 +7,11 @@
 
 ## Properties
 
-| Property      | Attribute      | Description | Type      | Default     |
-| ------------- | -------------- | ----------- | --------- | ----------- |
-| `data`        | `data`         |             | `any`     | `undefined` |
-| `hideDrawing` | `hide-drawing` |             | `boolean` | `undefined` |
-| `snapVideo`   | `snap-video`   |             | `boolean` | `undefined` |
-| `title`       | `title`        |             | `string`  | `''`        |
+| Property    | Attribute    | Description | Type      | Default     |
+| ----------- | ------------ | ----------- | --------- | ----------- |
+| `data`      | `data`       |             | `any`     | `undefined` |
+| `noLogs`    | `no-logs`    |             | `boolean` | `undefined` |
+| `snapVideo` | `snap-video` |             | `boolean` | `undefined` |
 
 
 ## Methods
@@ -33,8 +32,8 @@ Type: `Promise<void>`
 | Part          | Description |
 | ------------- | ----------- |
 | `"base"`      |             |
-| `"button"`    |             |
 | `"container"` |             |
+| `"content"`   |             |
 | `"video"`     |             |
 
 

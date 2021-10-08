@@ -15,7 +15,6 @@ export namespace Components {
     }
     interface PskBarcodeScanner {
         "data": any;
-        "hideDrawing": false;
         "noLogs": false;
         "snapVideo": false;
         "switchCamera": () => Promise<void>;
@@ -49,7 +48,6 @@ declare namespace LocalJSX {
     }
     interface PskBarcodeScanner {
         "data"?: any;
-        "hideDrawing"?: false;
         "noLogs"?: false;
         "snapVideo"?: false;
     }
