@@ -12,6 +12,7 @@ enum STATUS {
     IN_PROGRESS = "Camera detection in progress...",
     DONE = "Scan done.",
     NO_DETECTION = "No camera detected.",
+    ACCESS_DENIED = "Access denied"
 }
 
 const style = {
@@ -51,6 +52,8 @@ const templates = {
     active: createElement('button', { style: style.button, text: 'Change camera'}),
     done: createElement('div', { style: style.button, text: 'Scan complete!' }),
     error: createElement('div', { style: style.button, text: 'No camera device found!' }),
+    feedback: createElement('div', { style: style.button, text: 'Checking permissions...' }),
+    access_denied: createElement('div', { style: style.button, text: 'Access denied...' })
 }
 
 function createElement(name, props?: any) {
@@ -144,6 +147,9 @@ export class PskBarcodeScanner {
                 break;
             case STATUS.LOAD_CAMERAS:
                 element = this.createCustomizedElement('feedback');
+                break;
+            case STATUS.ACCESS_DENIED:
+                element = this.createCustomizedElement('access_denied');
                 break;
             default:
                 element = this.createCustomizedElement('active');
@@ -253,6 +259,7 @@ export class PskBarcodeScanner {
                     });
                 })
                 .catch(err => {
+                    this.status = STATUS.ACCESS_DENIED;
                     console.log('getUserMedia', err);
                 });
         }
