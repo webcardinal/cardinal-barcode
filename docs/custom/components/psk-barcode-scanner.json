@@ -57,9 +57,36 @@
       ],
       "optional": false,
       "required": false
+    },
+    {
+      "name": "useFrames",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "use-frames",
+      "reflectToAttr": false,
+      "docs": "",
+      "docsTags": [],
+      "values": [
+        {
+          "type": "boolean"
+        }
+      ],
+      "optional": false,
+      "required": false
     }
   ],
   "methods": [
+    {
+      "name": "setFrame",
+      "returns": {
+        "type": "Promise<void>",
+        "docs": ""
+      },
+      "signature": "setFrame(src: any) => Promise<void>",
+      "parameters": [],
+      "docs": "",
+      "docsTags": []
+    },
     {
       "name": "switchCamera",
       "returns": {
