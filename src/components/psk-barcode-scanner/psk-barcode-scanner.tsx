@@ -242,8 +242,18 @@ export class PskBarcodeScanner {
             videoElement.removeAttribute('hidden');
         }
 
+        // Since ZXing's "decodeFromConstraints" throws a DOM error
+        // the following call is made only for the error case
+        // in order to update the current status of the component
         navigator.mediaDevices.getUserMedia(constraints)
-            .then(() => {
+            .then(stream => {
+                // If there is no error, camera access is guaranteed
+                // but the same stream will be again requested by ZXing in "decodeFromConstraints"
+                // in some browsers (e.g. Chrome) same instance will be returned each time,
+                // but in other browsers (e.g. Safari) a new MediaStream instance will be created,
+                // if all the tracks from the previous stream aren't stopped the "camera" will be locked in record state
+                stream.getTracks().forEach((track) => track.stop());
+
                 const [invertedCanvasElement, invertedStream] = this.getInvertedCanvas();
                 this.drawInvertedFrame(videoElement, invertedCanvasElement);
 
