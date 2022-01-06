@@ -17,7 +17,7 @@ export namespace Components {
         "data": any;
         "noLogs": boolean;
         "setFrame": (src: any) => Promise<void>;
-        "snapVideo": false;
+        "snapVideo": boolean;
         "switchCamera": () => Promise<void>;
         "useFrames": boolean;
     }
@@ -51,7 +51,7 @@ declare namespace LocalJSX {
     interface PskBarcodeScanner {
         "data"?: any;
         "noLogs"?: boolean;
-        "snapVideo"?: false;
+        "snapVideo"?: boolean;
         "useFrames"?: boolean;
     }
     interface IntrinsicElements {

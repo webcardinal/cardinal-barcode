@@ -10,9 +10,9 @@
 | Property    | Attribute    | Description | Type      | Default     |
 | ----------- | ------------ | ----------- | --------- | ----------- |
 | `data`      | `data`       |             | `any`     | `undefined` |
-| `noLogs`    | `no-logs`    |             | `boolean` | `undefined` |
-| `snapVideo` | `snap-video` |             | `boolean` | `undefined` |
-| `useFrames` | `use-frames` |             | `boolean` | `undefined` |
+| `noLogs`    | `no-logs`    |             | `boolean` | `false`     |
+| `snapVideo` | `snap-video` |             | `boolean` | `false`     |
+| `useFrames` | `use-frames` |             | `boolean` | `false`     |
 
 
 ## Methods

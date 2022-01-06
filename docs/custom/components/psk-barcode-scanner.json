@@ -34,6 +34,7 @@
       "reflectToAttr": false,
       "docs": "",
       "docsTags": [],
+      "default": "false",
       "values": [
         {
           "type": "boolean"
@@ -50,6 +51,7 @@
       "reflectToAttr": false,
       "docs": "",
       "docsTags": [],
+      "default": "false",
       "values": [
         {
           "type": "boolean"
@@ -63,9 +65,10 @@
       "type": "boolean",
       "mutable": false,
       "attr": "use-frames",
-      "reflectToAttr": false,
+      "reflectToAttr": true,
       "docs": "",
       "docsTags": [],
+      "default": "false",
       "values": [
         {
           "type": "boolean"
