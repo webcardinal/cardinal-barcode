@@ -77,9 +77,9 @@ export default class VideoOverlay extends CanvasOverlay {
 
       this.addLensCorners(ctx, xPadding, yPadding, frameWidth, ANGLE_WIDTH);
 
-      setTimeout(() => {
-        ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
-      },500);
+      // setTimeout(() => {
+      //   ctx.clearRect(0, 0, this.overlayCanvas.width, this.overlayCanvas.height);
+      // },500);
     }
   }
 
