@@ -22,7 +22,7 @@ export namespace Components {
           * Decides if internal status of component is logged.
          */
         "noLogs": boolean;
-        "setFrame": (src: any) => Promise<void>;
+        "setFrame": (src: string) => Promise<void>;
         /**
           * Decides if a screenshot is made after scanning.
          */

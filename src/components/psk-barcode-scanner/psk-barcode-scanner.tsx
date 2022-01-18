@@ -17,6 +17,22 @@ import {
 import filters from "./psk-barcode-scanner.filters";
 import type { FilterProps } from "./psk-barcode-scanner.filters";
 
+declare global {
+    interface HTMLCanvasElement {
+        captureStream(frameRate?: number): MediaStream;
+    }
+}
+
+type Scanner = {
+    reader: BrowserMultiFormatReader;
+    controls: any;
+};
+type Frame = {
+    canvas: HTMLCanvasElement;
+    context: CanvasRenderingContext2D;
+    stream: MediaStream;
+};
+
 const INTERVAL_BETWEEN_SCANS = 1000;
 
 enum STATUS {
@@ -28,8 +44,6 @@ enum STATUS {
     ACCESS_DENIED = "Access denied",
     CHANGE_CAMERA = "Change camera",
 }
-
-type Scanner = { reader: BrowserMultiFormatReader; controls: any };
 
 const templates = {
     init: createElement("div", {
@@ -92,7 +106,7 @@ export class PskBarcodeScanner {
 
     @State() status: STATUS = STATUS.INIT;
 
-    private activeDeviceId: string | undefined;
+    @State() activeDeviceId: string;
 
     private video: HTMLVideoElement;
 
@@ -102,13 +116,13 @@ export class PskBarcodeScanner {
 
     private devices: MediaDeviceInfo[] = [];
 
-    private overlay;
-
-    private useFramesContext = {
-        canvas: undefined as HTMLCanvasElement,
-        context: undefined as CanvasRenderingContext2D,
-        stream: undefined as MediaStream,
+    private frame: Frame = {
+        canvas: null as HTMLCanvasElement,
+        context: null as CanvasRenderingContext2D,
+        stream: null as MediaStream,
     };
+
+    private overlay;
 
     constructor() {
         window.addEventListener("resize", () => {
@@ -121,33 +135,29 @@ export class PskBarcodeScanner {
 
     // Pre-rendering...
 
+    private initializeReferencesToElements = () => {
+        const container = this.host.shadowRoot.querySelector("#container") as HTMLDivElement;
+        if (!container) {
+            console.error("[psk-barcode-scanner] Component can not render #container");
+            return;
+        }
+
+        const video = this.host.shadowRoot.querySelector("#video") as HTMLVideoElement;
+        if (!video) {
+            console.error("[psk-barcode-scanner] Component can not render #video");
+            return;
+        }
+
+        this.container = container;
+        this.video = video;
+    };
+
     private createSlotElement = (name) => {
         if (this.host.querySelector(`[slot=${name}]`)) {
             return createElement("slot", { name });
         }
         templates[name].part = name;
         return templates[name];
-    };
-
-    private createVideoElement = () => {
-        const container = this.host.shadowRoot.querySelector("#container");
-        if (!container) {
-            console.error("[psk-barcode-scanner] Component can not render #container");
-            return;
-        }
-
-        this.container = container as HTMLDivElement;
-
-        this.video = createElement("video", {
-            id: "video",
-            muted: true,
-            autoplay: true,
-            playsinline: true,
-            hidden: true,
-            style: style.video,
-        }) as HTMLVideoElement;
-
-        this.container.append(this.video);
     };
 
     private createCanvasElement = (id: string) => {
@@ -169,7 +179,7 @@ export class PskBarcodeScanner {
     private attachOnClickForChangeCamera = () => {
         const toggle = this.host.shadowRoot.querySelector("[change-camera]") as HTMLButtonElement;
         if (toggle) {
-            toggle.onclick = async () => await this.switchCamera();
+            toggle.onclick = async ()  => await this.switchCamera();
         }
     };
 
@@ -237,6 +247,15 @@ export class PskBarcodeScanner {
         if (this.overlay) {
             this.overlay.removeOverlays();
         }
+    };
+
+    // Event handlers
+
+    private onVideoPlay = async () => {
+        this.status = STATUS.IN_PROGRESS;
+        this.cleanupOverlays();
+        await this.drawOverlays();
+        this.video.removeAttribute("hidden");
     };
 
     // Decoding...
@@ -344,24 +363,19 @@ export class PskBarcodeScanner {
 
     private scanUsingFilters = async () => {
         // default filter
-        await this.decodeFromFilter("default", undefined, INTERVAL_BETWEEN_SCANS);
+        const defaultFilter = this.decodeFromFilter("default", undefined, INTERVAL_BETWEEN_SCANS);
 
         // invertedSymbols filter
-        await this.decodeFromFilter("invertedSymbols", filters.invertedSymbolsFilter, INTERVAL_BETWEEN_SCANS);
-    };
+        const invertedSymbolsFilter = await this.decodeFromFilter(
+            "invertedSymbols",
+            filters.invertedSymbolsFilter,
+            INTERVAL_BETWEEN_SCANS
+        );
 
-    private startVideoStream = async () => {
-        const video = this.video;
-
-        try {
-            await video.play();
-        } catch (error) {
-            console.error("[psk-barcode-scanner] Error while playing video", error);
-        }
+        await Promise.all([defaultFilter, invertedSymbolsFilter]);
     };
 
     private startScanningUsingFrames = async () => {
-        await this.startVideoStream();
         await this.scanUsingFilters();
     };
 
@@ -369,6 +383,7 @@ export class PskBarcodeScanner {
         const video = this.video;
 
         const constraints = {
+            audio: false,
             video: { facingMode: "environment" },
         };
 
@@ -377,18 +392,29 @@ export class PskBarcodeScanner {
             constraints.video["deviceId"] = { exact: deviceId };
         }
 
-        video.onplay = async () => {
-            this.status = STATUS.IN_PROGRESS;
-            this.cleanupOverlays();
-            await this.drawOverlays();
-            video.removeAttribute("hidden");
-        };
-
         try {
             video.srcObject = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (error) {
             this.status = STATUS.ACCESS_DENIED;
-            console.error("[psk-barcode-scanner] Error while getting userMedia", error);
+            console.error("[psk-barcode-scanner] Error while getting userMediaStream", error);
+        }
+
+        if (!video.srcObject) {
+            return;
+        }
+
+        try {
+            const stream = video.srcObject as MediaStream;
+            const tracks = stream.getVideoTracks();
+            for (let i = 0; i < tracks.length; i++) {
+                const device = tracks[i];
+                if (device.readyState === "live") {
+                    this.activeDeviceId = device.getSettings().deviceId;
+                    break;
+                }
+            }
+        } catch (error) {
+            console.error("[psk-barcode-scanner] Error while getting activeDeviceId", error);
         }
 
         await this.startScanningUsingFrames();
@@ -398,12 +424,6 @@ export class PskBarcodeScanner {
         switch (this.status) {
             case STATUS.LOAD_CAMERAS:
             case STATUS.CHANGE_CAMERA: {
-                this.createVideoElement();
-
-                // if (this.status === STATUS.CHANGE_CAMERA) {
-                //     this.stopScanning();
-                // }
-
                 // wait until video is in viewport
                 await waitUntilElementIsInVisibleInViewport(this.video, 50);
 
@@ -417,6 +437,8 @@ export class PskBarcodeScanner {
                     await this.startScanningUsingNavigator(deviceId);
                 }
 
+                this.status = STATUS.IN_PROGRESS;
+
                 break;
             }
         }
@@ -424,10 +446,13 @@ export class PskBarcodeScanner {
 
     private stopVideoStream = () => {
         const stream = this.video.srcObject as MediaStream;
+        if (!stream) {
+            return;
+        }
         const tracks = stream.getTracks();
         tracks.forEach((track) => track.stop());
         this.video.srcObject = null;
-    }
+    };
 
     private stopScanning = () => {
         // stop async decode processes started by each filter
@@ -440,24 +465,23 @@ export class PskBarcodeScanner {
 
     @Method()
     async switchCamera() {
-        let devices = [undefined];
+        const ids = this.devices.map(device => device.deviceId);
 
-        for (const device of this.devices) {
-            devices.push(device.deviceId);
-        }
+        const currentIndex = ids.indexOf(this.activeDeviceId);
 
-        let currentIndex = devices.indexOf(this.activeDeviceId);
-        if (currentIndex === devices.length - 1) {
-            currentIndex = -1;
-        }
-        currentIndex++;
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % ids.length;
 
-        this.activeDeviceId = devices[currentIndex];
+        this.activeDeviceId = ids[nextIndex];
+
         this.status = STATUS.CHANGE_CAMERA;
+
+        this.stopScanning();
+
+        this.stopVideoStream();
     }
 
     @Method()
-    async setFrame(src) {
+    async setFrame(src: string) {
         if (!this.useFrames) {
             return;
         }
@@ -466,37 +490,23 @@ export class PskBarcodeScanner {
             await this.host.componentOnReady();
         }
 
-        if (!this.useFramesContext.canvas || !this.useFramesContext.stream) {
-            const { shadowRoot } = this.host;
-            const scannerContainer = shadowRoot.querySelector("#container") as HTMLElement;
-            const canvas = createElement("canvas", {
-                id: "frameCanvas",
-                width: scannerContainer.offsetWidth || lastDimensions.width,
-                height: scannerContainer.offsetHeight || lastDimensions.height,
-                style: { position: "absolute", width: "100%", top: 0, left: 0 },
-            }) as any;
+        if (!this.frame.canvas || !this.frame.stream) {
+            const canvas = this.createCanvasElement("frameCanvas");
+            const context = canvas.getContext("2d");
             const stream = canvas.captureStream(30);
-            this.useFramesContext.canvas = canvas;
-            this.useFramesContext.context = canvas.getContext("2d");
-            this.useFramesContext.stream = stream;
 
-            const videoElement = this.host.shadowRoot.querySelector("#video") as HTMLVideoElement;
-            videoElement.onplay = async () => {
-                this.status = STATUS.IN_PROGRESS;
-                this.cleanupOverlays();
-                await this.drawOverlays();
-                videoElement.removeAttribute("hidden");
-            };
-            videoElement.srcObject = this.useFramesContext.stream;
+            this.frame = { canvas, context, stream };
+
+            this.video.srcObject = this.frame.stream;
         }
 
-        const imageElement = new Image();
-        imageElement.addEventListener("load", () => {
+        const image = new Image();
+        image.addEventListener("load", () => {
             // scale image that will be played as stream according to screen dimensions
-            const [x, y, w, h] = computeElementScalingAccordingToScreen(imageElement, this.useFramesContext.canvas);
-            this.useFramesContext.context.drawImage(imageElement, x, y, w, h);
+            const [x, y, w, h] = computeElementScalingAccordingToScreen(image, this.frame.canvas);
+            this.frame.context.drawImage(image, x, y, w, h);
         });
-        imageElement.src = src;
+        image.src = src;
     }
 
     // Lifecycle
@@ -534,12 +544,15 @@ export class PskBarcodeScanner {
     }
 
     async componentDidRender() {
+        this.initializeReferencesToElements();
+
         await this.startScanning(this.activeDeviceId);
+
         this.attachOnClickForChangeCamera();
     }
 
     async disconnectedCallback() {
-        this.stopScanning()
+        this.stopScanning();
         this.stopVideoStream();
     }
 
@@ -548,6 +561,15 @@ export class PskBarcodeScanner {
             <div part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
                     <input type="file" accept="video/*" capture="environment" style={style.input} />
+                    <video
+                        id="video"
+                        part="video"
+                        onPlay={this.onVideoPlay}
+                        autoplay
+                        playsinline
+                        hidden
+                        style={style.video}
+                    />
                     <div id="content" part="content" innerHTML={this.renderContent()} />
                 </div>
             </div>
