@@ -1,11 +1,6 @@
 type ElementDimensions = {
-    width: number,
-    height: number
-}
-
-export type PskBarcodeVideoElements = {
-    video: HTMLVideoElement;
-    invertedSymbolsVideo: HTMLVideoElement;
+    width: number;
+    height: number;
 };
 
 /**
@@ -14,7 +9,10 @@ export type PskBarcodeVideoElements = {
  *
  * Similar behavior with CSS "object-fit: cover" for an HTMLElement
  */
-export function computeElementScalingAccordingToScreen(elementDimensions: ElementDimensions, screenDimensions: ElementDimensions) {
+export function computeElementScalingAccordingToScreen(
+    elementDimensions: ElementDimensions,
+    screenDimensions: ElementDimensions
+) {
     let x, y, w, h;
 
     const computeRatioUsingWidth = () => {
@@ -35,13 +33,13 @@ export function computeElementScalingAccordingToScreen(elementDimensions: Elemen
 
         x = 0;
         y = (screenDimensions.height - h) * 0.5;
-    }
+    };
 
     if (elementDimensions.height <= elementDimensions.width) {
         computeRatioUsingWidth();
 
         if (x > 0 && y <= 0) {
-            computeRatioUsingHeight()
+            computeRatioUsingHeight();
         }
     } else {
         computeRatioUsingHeight();
@@ -65,6 +63,40 @@ export function isElementVisibleInViewport(element) {
     );
 }
 
+export function drawFrameOnCanvas(video: HTMLVideoElement, canvas: HTMLCanvasElement) {
+    const context = canvas.getContext("2d");
+
+    // scale video according to screen dimensions
+    const [x, y, w, h] = computeElementScalingAccordingToScreen(
+        { width: video.videoWidth, height: video.videoHeight },
+        canvas
+    );
+    context.drawImage(video, x, y, w, h);
+}
+
+export function waitUntilElementIsInVisibleInViewport(element, delay) {
+    return new Promise<void>((resolve) => {
+        if (isElementVisibleInViewport(element)) {
+            resolve();
+            return;
+        }
+
+        const interval = setInterval(() => {
+            if (isElementVisibleInViewport(element)) {
+                resolve();
+                clearInterval(interval);
+                return;
+            }
+        }, delay);
+    });
+}
+
+export function waitUntilAnimationFrameIsPossible() {
+    return new Promise((resolve) => {
+        window.requestAnimationFrame(resolve)
+    });
+}
+
 export function createElement(name, props?: any) {
     if (!props) {
         props = {};
@@ -73,19 +105,19 @@ export function createElement(name, props?: any) {
         props.style = {};
     }
     if (!props.text) {
-        props.text = '';
+        props.text = "";
     }
     const { style, text } = props;
     delete props.style;
     delete props.text;
     const element = Object.assign(document.createElement(name), props);
-    Object.keys(style).forEach(rule => element.style[rule] = style[rule]);
+    Object.keys(style).forEach((rule) => (element.style[rule] = style[rule]));
     element.innerHTML = text;
     return element as Element;
 }
 
-export function getStream(video: HTMLVideoElement | HTMLCanvasElement, frameRate: number = 30) {
-    return (video as any).captureStream(frameRate) as MediaStream
+export function getStream(canvas: HTMLCanvasElement, frameRate: number = 30) {
+    return (canvas as any).captureStream(frameRate) as MediaStream;
 }
 
 export async function getVideoDevices() {
@@ -94,11 +126,11 @@ export async function getVideoDevices() {
         const videoDevices: MediaDeviceInfo[] = [];
         for (const device of devices) {
             // @ts-ignore
-            const kind = device.kind === 'video' ? 'videoinput' : device.kind;
-            if (kind !== 'videoinput') {
+            const kind = device.kind === "video" ? "videoinput" : device.kind;
+            if (kind !== "videoinput") {
                 continue;
             }
-            const deviceId = device.deviceId || device['id'];
+            const deviceId = device.deviceId || device["id"];
             const label = device.label || `Video device ${videoDevices.length + 1}`;
             const groupId = device.groupId;
             const videoDevice = { deviceId, label, kind, groupId } as MediaDeviceInfo;
@@ -109,7 +141,6 @@ export async function getVideoDevices() {
         console.error(error);
         return [];
     }
-
 }
 
 export function snapFrame(video: HTMLVideoElement) {
@@ -132,55 +163,61 @@ export function snapFrame(video: HTMLVideoElement) {
 }
 
 export function captureFrame(video: HTMLVideoElement) {
-    const canvas = document.createElement('canvas');
+    const canvas = document.createElement("canvas");
     canvas.width = video.clientWidth;
     canvas.height = video.clientHeight;
 
     const [x, y, w, h] = computeElementScalingAccordingToScreen(
         {
             width: video.videoWidth,
-            height: video.videoHeight
+            height: video.videoHeight,
         },
         canvas
     );
 
-    const context = canvas.getContext('2d');
+    const context = canvas.getContext("2d");
     context.drawImage(video, x, y, w, h);
-    return canvas.toDataURL('image/jpeg');
+    return canvas.toDataURL("image/jpeg");
 }
 
 export const style = {
     base: {
-        display: 'grid', gridTemplateRows: '1fr',
-        width: '100%', height: '100%'
+        display: "grid",
+        gridTemplateRows: "1fr",
+        width: "100%",
+        height: "100%",
     },
     container: {
-        position: 'relative',
-        display: 'grid', gridTemplateRows: '1fr',
-        overflow: 'hidden',
-        minHeight: '350px',
-        padding: '0', margin: '0'
+        position: "relative",
+        display: "grid",
+        gridTemplateRows: "1fr",
+        overflow: "hidden",
+        minHeight: "350px",
+        padding: "0",
+        margin: "0",
     },
     video: {
-        height: '100%', width: '100%',
-        objectFit: 'cover'
-    },
-    invertedSymbolsVideo: {
-        height: '100%', width: '100%',
-        objectFit: 'cover',
-        position: 'absolute',
-        top: '0'
+        height: "100%",
+        width: "100%",
+        objectFit: "cover",
+        position: "absolute",
+        top: "0",
     },
     input: {
-        display: 'none'
+        display: "none",
     },
     button: {
-        position: 'absolute', zIndex: '1',
-        padding: '0.3em 0.6em',
-        bottom: '1em', left: '50%', transform: 'translateX(-50%)',
-        color: '#FFFFFF', background: 'transparent',
-        borderRadius: '2px', border: '2px solid rgba(255, 255, 255, 0.75)',
-        fontSize: '15px',
-        textAlign: 'center',
-    }
-}
+        position: "absolute",
+        zIndex: "1",
+        padding: "0.3em 0.6em",
+        bottom: "1em",
+        left: "50%",
+        transform: "translateX(-50%)",
+        color: "#FFFFFF",
+        background: "transparent",
+        borderRadius: "2px",
+        border: "2px solid rgba(255, 255, 255, 0.75)",
+        fontSize: "15px",
+        textAlign: "center",
+    },
+};

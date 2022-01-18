@@ -20,7 +20,7 @@
     "generate": "stencil generate"
   },
   "devDependencies": {
-    "@stencil/core": "^2.3.0",
+    "@stencil/core": "^2.3.0"
   },
   "repository": {
     "type": "git",
