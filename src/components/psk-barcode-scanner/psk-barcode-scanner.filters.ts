@@ -1,22 +1,12 @@
-import { computeElementScalingAccordingToScreen } from "./psk-barcode-scanner.utils";
-
 type FilterProps = {
-    video: HTMLVideoElement
     canvas: HTMLCanvasElement
 };
 
 const filters = {
     invertedSymbolsFilter: (filterProps: FilterProps) => {
-        const { video, canvas } = filterProps;
-
-        // scale video according to screen dimensions
-        const [x, y, w, h] = computeElementScalingAccordingToScreen(
-            { width: video.videoWidth, height: video.videoHeight },
-            canvas
-        );
+        const { canvas } = filterProps;
 
         const context = canvas.getContext("2d");
-        context.drawImage(video, x, y, w, h);
 
         // invert colors of the current frame
         const image = context.getImageData(0, 0, canvas.width, canvas.height);
