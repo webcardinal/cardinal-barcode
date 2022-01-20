@@ -14,11 +14,23 @@ export namespace Components {
         "type": string;
     }
     interface PskBarcodeScanner {
-        "data": any;
+        /**
+          * The model-handler scope that will be updated with the retrieved data from the scanner.
+         */
+        "data": string;
+        /**
+          * Decides if internal status of component is logged.
+         */
         "noLogs": boolean;
-        "setFrame": (src: any) => Promise<void>;
+        "setFrame": (src: string) => Promise<void>;
+        /**
+          * Decides if a screenshot is made after scanning.
+         */
         "snapVideo": boolean;
         "switchCamera": () => Promise<void>;
+        /**
+          * If <code>true</code>, setFrames can be used and custom frames will be scanned.
+         */
         "useFrames": boolean;
     }
 }
@@ -49,9 +61,21 @@ declare namespace LocalJSX {
         "type"?: string;
     }
     interface PskBarcodeScanner {
-        "data"?: any;
+        /**
+          * The model-handler scope that will be updated with the retrieved data from the scanner.
+         */
+        "data"?: string;
+        /**
+          * Decides if internal status of component is logged.
+         */
         "noLogs"?: boolean;
+        /**
+          * Decides if a screenshot is made after scanning.
+         */
         "snapVideo"?: boolean;
+        /**
+          * If <code>true</code>, setFrames can be used and custom frames will be scanned.
+         */
         "useFrames"?: boolean;
     }
     interface IntrinsicElements {

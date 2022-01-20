@@ -19,7 +19,6 @@
     "docs": "stencil build --docs",
     "generate": "stencil generate"
   },
-  "dependencies": {},
   "devDependencies": {
     "@stencil/core": "^2.3.0"
   },
@@ -27,5 +26,11 @@
     "type": "git",
     "url": "git+https://github.com/webcardinal/cardinal-barcode.git"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@zxing/browser": "^0.0.10"
+  },
+  "prettier": {
+      "printWidth": 120
+  }
 }

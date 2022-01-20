@@ -1,38 +1,44 @@
-import {
-    Build,
-    Component,
-    Prop,
-    State,
-    Element,
-    Method,
-    h,
-} from "@stencil/core";
-import { BindModel, TableOfContentProperty } from "@cardinal/internals";
+import { Build, Component, Prop, State, Element, Method, h } from "@stencil/core";
+import type { HTMLStencilElement } from "@stencil/core/internal";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { BindModel } from "@cardinal/internals";
 
 import audio from "./audio";
 import {
-    computeElementScalingAccordingToScreen,
+    captureFrame,
     createElement,
-    isElementVisibleInViewport,
+    drawFrameOnCanvas,
+    loadFrame,
+    setVideoStream,
+    snapFrame,
     style,
+    waitUntilAnimationFrameIsPossible,
+    waitUntilElementIsVisibleInViewport,
 } from "./psk-barcode-scanner.utils";
+import filters from "./psk-barcode-scanner.filters";
+import type { FilterProps } from "./psk-barcode-scanner.filters";
 
-const INTERVAL_ZXING_LOADED = 300;
-const INTERVAL_BETWEEN_SCANS = 2000;
-const INTERVAL_BETWEEN_INVERTED_SCANS = 50;
-const DELAY_AFTER_RESULT = 500;
+type Scanner = {
+    reader: BrowserMultiFormatReader;
+    controls: any;
+};
+type Frame = {
+    canvas: HTMLCanvasElement;
+    source: HTMLImageElement | HTMLVideoElement;
+    points: number[];
+};
+
+const INTERVAL_BETWEEN_SCANS = 1000;
 
 enum STATUS {
     INIT = "Initializing component...",
     LOAD_CAMERAS = "Detecting your cameras...",
-    IN_PROGRESS = "Camera detection in progress...",
+    IN_PROGRESS = "Detection in progress...",
     DONE = "Scan done.",
     NO_DETECTION = "No camera detected.",
     ACCESS_DENIED = "Access denied",
     CHANGE_CAMERA = "Change camera",
 }
-
-const src = "webcardinal/extended/cardinal-barcode/libs/zxing.min.js";
 
 const templates = {
     init: createElement("div", {
@@ -59,11 +65,6 @@ const templates = {
 };
 templates.active.setAttribute("change-camera", "");
 
-const lastDimensions = {
-    width: NaN,
-    height: NaN,
-};
-
 @Component({
     tag: "psk-barcode-scanner",
     shadow: true,
@@ -71,51 +72,50 @@ const lastDimensions = {
 export class PskBarcodeScanner {
     @BindModel() modelHandler;
 
-    @Element() host: HTMLElement;
+    @Element() host: HTMLStencilElement;
 
-    @TableOfContentProperty({
-        description: `The data-model that will be updated with the retrieved data from the scanner.`,
-        isMandatory: true,
-        propertyType: `string`,
-    })
-    @Prop()
-    data: any;
+    /**
+     * The model-handler scope that will be updated with the retrieved data from the scanner.
+     */
+    @Prop({ mutable: true }) data: string;
 
-    @TableOfContentProperty({
-        description: `Decides if a screenshot is made after scanning.`,
-        isMandatory: false,
-        propertyType: `boolean`,
-    })
-    @Prop()
-    snapVideo = false;
+    /**
+     * Decides if a screenshot is made after scanning.
+     */
+    @Prop() snapVideo = false;
 
-    @TableOfContentProperty({
-        description: `Decides if internal status of component is logged.`,
-        isMandatory: false,
-        propertyType: `boolean`,
-    })
-    @Prop()
-    noLogs = false;
+    /**
+     * Decides if internal status of component is logged.
+     */
+    @Prop() noLogs = false;
 
+    /**
+     * If <code>true</code>, setFrames can be used and custom frames will be scanned.
+     */
     @Prop({ reflect: true }) useFrames = false;
 
     @State() status: STATUS = STATUS.INIT;
-    @State() ZXing;
-    @State() activeDeviceId: string | undefined;
 
-    private codeReader;
-    private invertedCodeReader;
-    private overlay;
-    private devices = [];
+    @State() activeDeviceId: string;
 
-    private useFramesContext = {
-        canvas: undefined as HTMLCanvasElement,
-        context: undefined as CanvasRenderingContext2D,
-        stream: undefined as MediaStream,
+    private video: HTMLVideoElement;
+
+    private container: HTMLDivElement;
+
+    private intervals: Set<number> = new Set<number>();
+
+    private devices: MediaDeviceInfo[] = [];
+
+    private frame: Frame = {
+        canvas: null as HTMLCanvasElement,
+        source: null as HTMLImageElement | HTMLVideoElement,
+        points: [],
     };
 
+    private overlay;
+
     constructor() {
-        window.addEventListener("resize", (_) => {
+        window.addEventListener("resize", () => {
             window.requestAnimationFrame(async () => {
                 this.cleanupOverlays();
                 await this.drawOverlays();
@@ -123,7 +123,26 @@ export class PskBarcodeScanner {
         });
     }
 
-    private createCustomizedElement = (name) => {
+    // Pre-rendering...
+
+    private initializeReferencesToElements = () => {
+        const container = this.host.shadowRoot.querySelector("#container") as HTMLDivElement;
+        if (!container) {
+            console.error("[psk-barcode-scanner] Component can not render #container");
+            return;
+        }
+
+        const video = this.host.shadowRoot.querySelector("#video") as HTMLVideoElement;
+        if (!video) {
+            console.error("[psk-barcode-scanner] Component can not render #video");
+            return;
+        }
+
+        this.container = container;
+        this.video = video;
+    };
+
+    private createSlotElement = (name) => {
         if (this.host.querySelector(`[slot=${name}]`)) {
             return createElement("slot", { name });
         }
@@ -131,30 +150,48 @@ export class PskBarcodeScanner {
         return templates[name];
     };
 
+    private attachOnClickForChangeCamera = () => {
+        const toggle = this.host.shadowRoot.querySelector("[change-camera]") as HTMLButtonElement;
+        if (toggle) {
+            toggle.onclick = async () => await this.switchCamera();
+        }
+    };
+
     private renderContent = () => {
         if (Build.isDev || !this.noLogs) {
-            console.log("Status:", this.status);
+            console.log("[psk-barcode-scanner] Status:", this.status);
         }
 
         let element;
         switch (this.status) {
             case STATUS.INIT:
-                element = this.createCustomizedElement("init");
+                element = this.createSlotElement("init");
                 break;
             case STATUS.NO_DETECTION:
-                element = this.createCustomizedElement("error");
+                element = this.createSlotElement("error");
                 break;
             case STATUS.DONE:
-                element = this.createCustomizedElement("done");
+                element = this.createSlotElement("done");
                 break;
             case STATUS.LOAD_CAMERAS:
-                element = this.createCustomizedElement("feedback");
+                if (this.host.hasAttribute("disable-some-slots")) {
+                    element = "";
+                    return;
+                }
+
+                element = this.createSlotElement("feedback");
                 break;
             case STATUS.ACCESS_DENIED:
-                element = this.createCustomizedElement("access_denied");
+                element = this.createSlotElement("access_denied");
                 break;
-            default:
-                element = this.createCustomizedElement("active");
+            default: {
+                if (this.host.hasAttribute("disable-some-slots")) {
+                    element = "";
+                    return;
+                }
+
+                element = this.createSlotElement("active");
+            }
         }
 
         const t = createElement("div");
@@ -162,12 +199,10 @@ export class PskBarcodeScanner {
         return t.innerHTML;
     };
 
+    // Overlays
+
     private drawOverlays = async () => {
-        if (
-            !this.host ||
-            !this.host.shadowRoot ||
-            this.host.querySelector("[slot=active]")
-        ) {
+        if (!this.host || !this.host.shadowRoot || this.host.querySelector("[slot=active]")) {
             return;
         }
 
@@ -176,10 +211,7 @@ export class PskBarcodeScanner {
         const scannerContainer = shadowRoot.querySelector("#container");
         const { VideoOverlay } = await import("./overlays");
         this.overlay = new VideoOverlay(scannerContainer, videoElement);
-        const success = this.overlay.createOverlaysCanvases(
-            "lensCanvas",
-            "overlayCanvas"
-        );
+        const success = this.overlay.createOverlaysCanvases("lensCanvas", "overlayCanvas");
         if (success) {
             this.overlay.drawLensCanvas();
         }
@@ -191,430 +223,358 @@ export class PskBarcodeScanner {
         }
     };
 
-    private getInvertedCanvas = () => {
-        if (!this.host || !this.host.shadowRoot) {
+    // Event handlers
+
+    private onVideoPlay = async () => {
+        this.status = STATUS.IN_PROGRESS;
+        this.cleanupOverlays();
+        await this.drawOverlays();
+        this.video.removeAttribute("hidden");
+    };
+
+    // Decoding...
+
+    private decodeCallback = (error, result) => {
+        if (result && this.status === STATUS.IN_PROGRESS) {
+            this.stopScanning();
+
+            if (!this.noLogs) {
+                console.log("[psk-barcode-scanner] Scanned data:", result);
+            }
+
+            if (this.modelHandler) {
+                this.status = STATUS.DONE;
+
+                audio.play();
+
+                if (this.overlay) {
+                    this.overlay.drawOverlay(result.resultPoints);
+                }
+
+                if (this.snapVideo) {
+                    snapFrame(this.video);
+                }
+
+                if (this.host.hasAttribute("results")) {
+                    result.frame = captureFrame(this.video);
+                    this.modelHandler.updateModel("results", result);
+                }
+
+                this.modelHandler.updateModel("data", result.text);
+
+                if (!this.snapVideo) {
+                    this.cleanupOverlays();
+                }
+            }
+
+            this.stopVideoStream();
+
             return;
         }
 
-        const scannerContainer = this.host.shadowRoot.querySelector(
-            "#container"
-        ) as HTMLElement;
-
-        if (!lastDimensions.width) {
-            lastDimensions.width = scannerContainer.offsetWidth;
-            lastDimensions.height = scannerContainer.offsetHeight;
+        if (error && error.message !== "No MultiFormat Readers were able to detect the code.") {
+            console.error("[psk-barcode-scanner] Error while decoding", error);
+            return;
         }
-
-        const invertedCanvasElement = createElement("canvas", {
-            id: "invertedCanvas",
-            width: scannerContainer.offsetWidth || lastDimensions.width,
-            height: scannerContainer.offsetHeight || lastDimensions.height,
-            style: { position: "absolute", width: "100%", top: 0, left: 0 },
-        }) as any;
-        const invertedStream = invertedCanvasElement.captureStream(
-            INTERVAL_BETWEEN_INVERTED_SCANS
-        );
-
-        return [invertedCanvasElement, invertedStream, scannerContainer];
     };
 
-    private drawInvertedFrame = (videoElement, canvasElement) => {
-        // for infinite loops of the recursion
-        if (this.status === STATUS.DONE) {
+    private decodeFromFilter = async (
+        filterId: string,
+        filterAction: Function | undefined,
+        intervalBetweenScans: number
+    ) => {
+        const canvas = this.frame.canvas.cloneNode() as HTMLCanvasElement;
+
+        canvas.id = filterId;
+
+        drawFrameOnCanvas(this.frame.source, canvas, { points: this.frame.points });
+
+        // this.host.shadowRoot.append(canvas)
+
+        const hints = new Map();
+        hints.set(3, true); // TRY_HARDER
+
+        const scanner: Scanner = {
+            reader: new BrowserMultiFormatReader(hints),
+            controls: undefined,
+        };
+
+        const decodeFromCanvas = async () => {
+            if (this.status === STATUS.DONE) {
+                return true;
+            }
+
+            if (!this.useFrames) {
+                drawFrameOnCanvas(this.frame.source, canvas, { points: this.frame.points });
+            }
+
+            if (typeof filterAction === "function") {
+                // filtered scanning
+                const filterProps: FilterProps = { canvas };
+                await filterAction(filterProps);
+            }
+
+            try {
+                const result = scanner.reader.decodeFromCanvas(canvas) as any;
+                result.filter = { name: filterId, width: canvas.width, height: canvas.height };
+                this.decodeCallback(undefined, result);
+                return true;
+            } catch (error) {
+                return false;
+            }
+        };
+
+        if (await decodeFromCanvas()) {
             return;
         }
 
-        const canvasContext = canvasElement.getContext("2d");
+        const interval = setInterval(async () => {
+            if (this.status === STATUS.DONE) {
+                clearInterval(interval);
+                this.intervals.delete(interval);
+                return;
+            }
 
-        // scale video according to screen dimensions
-        const [x, y, w, h] = computeElementScalingAccordingToScreen(
-            {
-                width: videoElement.videoWidth,
-                height: videoElement.videoHeight,
-            },
-            canvasElement
-        );
-        canvasContext.drawImage(videoElement, x, y, w, h);
+            if (await decodeFromCanvas()) {
+                clearInterval(interval);
+                this.intervals.delete(interval);
+                return;
+            }
+        }, intervalBetweenScans);
 
-        // invert colors of the current frame
-        const image = canvasContext.getImageData(
-            0,
-            0,
-            canvasElement.width,
-            canvasElement.height
-        );
-        for (let i = 0; i < image.data.length; i += 4) {
-            image.data[i] = image.data[i] ^ 255;
-            image.data[i + 1] = image.data[i + 1] ^ 255;
-            image.data[i + 2] = image.data[i + 2] ^ 255;
-        }
-        canvasContext.putImageData(image, 0, 0);
-
-        setTimeout(() => {
-            this.drawInvertedFrame(videoElement, canvasElement);
-        }, INTERVAL_BETWEEN_INVERTED_SCANS);
+        this.intervals.add(interval);
     };
 
-    private scanUsingFrames = (
-        videoElement,
-        invertedVideoElement,
-        decodeCallback
-    ) => {
-        window.requestAnimationFrame(() => {
-            // this.drawInvertedFrame(videoElement, invertedCanvasElement);
-            this.tryDrawingInvertedFrame(videoElement, (invertedStream) => {
-                // @ts-ignore
-                this.codeReader.decodeFromStream(
-                    videoElement.captureStream(30),
-                    videoElement,
-                    decodeCallback
-                );
-                this.invertedCodeReader.decodeFromStream(
-                    invertedStream,
-                    invertedVideoElement,
-                    decodeCallback
-                );
-            });
-        });
+    // Scanning...
+
+    private scanUsingFilters = async () => {
+        // default filter
+        const defaultFilter = this.decodeFromFilter("default", undefined, INTERVAL_BETWEEN_SCANS);
+
+        // invertedSymbols filter
+        const invertedSymbolsFilter = this.decodeFromFilter(
+            "invertedSymbols",
+            filters.invertedSymbolsFilter,
+            INTERVAL_BETWEEN_SCANS
+        );
+
+        await Promise.all([defaultFilter, invertedSymbolsFilter]);
     };
 
-    private scanUsingNavigator = (
-        deviceId,
-        videoElement,
-        invertedVideoElement,
-        decodeCallback
-    ) => {
+    private startScanningUsingFrames = async () => {
+        this.status = STATUS.IN_PROGRESS;
+        await this.scanUsingFilters();
+    };
+
+    private startScanningUsingNavigator = async (deviceId: string) => {
+        const video = this.video;
+
         const constraints = {
+            audio: false,
             video: {
                 facingMode: "environment",
+                width: { min: this.container.offsetWidth, ideal: 3 * this.container.offsetWidth },
+                height: { min: this.container.offsetHeight, ideal: 3 * this.container.offsetHeight },
             },
         };
 
         if (deviceId && deviceId !== "no-camera") {
             delete constraints.video.facingMode;
-            constraints.video["deviceId"] = {
-                exact: deviceId,
-            };
+            constraints.video["deviceId"] = { exact: deviceId };
         }
 
-        videoElement.onplay = async () => {
-            this.status = STATUS.IN_PROGRESS;
-            this.cleanupOverlays();
-            await this.drawOverlays();
-            videoElement.removeAttribute("hidden");
-        };
-
-        // Since ZXing's "decodeFromConstraints" throws a DOM error
-        // the following call is made only for the error case
-        // in order to update the current status of the component
-        navigator.mediaDevices
-            .getUserMedia(constraints)
-            .then((stream) => {
-                // If there is no error, camera access is guaranteed
-                // but the same stream will be again requested by ZXing in "decodeFromConstraints"
-                // in some browsers (e.g. Chrome) same instance will be returned each time,
-                // but in other browsers (e.g. Safari) a new MediaStream instance will be created,
-                // if all the tracks from the previous stream aren't stopped the "camera" will be locked in record state
-                stream.getTracks().forEach((track) => track.stop());
-
-                this.tryDrawingInvertedFrame(videoElement, (invertedStream) => {
-                    this.codeReader.decodeFromConstraints(
-                        constraints,
-                        videoElement,
-                        decodeCallback
-                    );
-                    this.invertedCodeReader.decodeFromStream(
-                        invertedStream,
-                        invertedVideoElement,
-                        decodeCallback
-                    );
-                });
-            })
-            .catch((err) => {
-                this.status = STATUS.ACCESS_DENIED;
-                console.log("getUserMedia", err);
-            });
-    };
-
-    private scan = (deviceId: string | undefined) => {
-        const videoElement = this.host.shadowRoot.querySelector(
-            "#video"
-        ) as HTMLVideoElement;
-        const invertedVideoElement = this.host.shadowRoot.querySelector(
-            "#invertedVideo"
-        ) as HTMLVideoElement;
-
-        if (this.status === STATUS.CHANGE_CAMERA) {
-            this.codeReader.reset();
-            this.invertedCodeReader.reset();
+        try {
+            const canvas = createElement("canvas", {
+                id: "videoCanvas",
+                width: this.container.offsetWidth,
+                height: this.container.offsetHeight,
+            }) as HTMLCanvasElement;
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
+            await setVideoStream(this.video, stream);
+            const points = drawFrameOnCanvas(this.video, canvas);
+            this.frame = { canvas, source: this.video, points };
+        } catch (error) {
+            this.status = STATUS.ACCESS_DENIED;
+            console.error("[psk-barcode-scanner] Error while getting userMediaStream", error);
         }
 
-        const decodeCallback = (result, err) => {
-            if (result && this.status === STATUS.IN_PROGRESS) {
-                if (!this.noLogs) {
-                    console.log("Scanned data:", result);
-                }
+        if (!video.srcObject) {
+            return;
+        }
 
-                if (this.modelHandler) {
-                    this.modelHandler.updateModel("data", result.text);
-                    this.status = STATUS.DONE;
-                    audio.play();
-
-                    if (this.overlay) {
-                        this.overlay.drawOverlay(result.resultPoints);
-                    }
-
-                    setTimeout(() => {
-                        if (this.snapVideo) {
-                            const video = this.host.shadowRoot.querySelector(
-                                "video"
-                            );
-                            const h = video.videoHeight;
-                            const w = video.videoWidth;
-
-                            const canvas = document.createElement("canvas");
-                            canvas.width = w;
-                            canvas.height = h;
-
-                            const context = canvas.getContext("2d");
-                            canvas.style.width = "100%";
-                            canvas.style.height = "100%";
-                            canvas.style.objectFit = "cover";
-
-                            context.drawImage(video, 0, 0, w, h);
-                            video.parentElement.insertBefore(canvas, video);
-                        }
-
-                        this.codeReader.reset();
-                        this.invertedCodeReader.reset();
-
-                        if (this.overlay) {
-                            this.overlay.removeOverlays();
-                        }
-                    }, DELAY_AFTER_RESULT);
+        try {
+            const stream = video.srcObject as MediaStream;
+            const tracks = stream.getVideoTracks();
+            for (let i = 0; i < tracks.length; i++) {
+                const device = tracks[i];
+                if (device.readyState === "live") {
+                    this.activeDeviceId = device.getSettings().deviceId;
+                    break;
                 }
             }
-            if (err && !(err instanceof this.ZXing.NotFoundException)) {
-                console.error(err);
-            }
-        };
-
-        if (this.useFrames) {
-            this.scanUsingFrames(
-                videoElement,
-                invertedVideoElement,
-                decodeCallback
-            );
-        } else {
-            this.scanUsingNavigator(
-                deviceId,
-                videoElement,
-                invertedVideoElement,
-                decodeCallback
-            );
+        } catch (error) {
+            console.error("[psk-barcode-scanner] Error while getting activeDeviceId", error);
         }
+
+        await this.scanUsingFilters();
     };
 
-    private tryScanning = (deviceId) => {
+    private startScanning = async (deviceId: string) => {
         switch (this.status) {
             case STATUS.LOAD_CAMERAS:
             case STATUS.CHANGE_CAMERA: {
-                this.scan(deviceId);
+                // wait until video is in viewport
+                await waitUntilElementIsVisibleInViewport(this.video, 50);
+
+                // request an animation frame
+                await waitUntilAnimationFrameIsPossible();
+
+                // start scanning...
+                if (!this.useFrames) {
+                    this.status = STATUS.IN_PROGRESS;
+                    await this.startScanningUsingNavigator(deviceId);
+                }
+
                 break;
             }
         }
     };
 
-    private tryDrawingInvertedFrame = (videoElement, callback) => {
-        const interval = setInterval(() => {
-            if (isElementVisibleInViewport(videoElement)) {
-                const [
-                    invertedCanvasElement,
-                    invertedStream,
-                ] = this.getInvertedCanvas();
-
-                this.drawInvertedFrame(videoElement, invertedCanvasElement);
-                callback(invertedStream);
-                clearInterval(interval);
-            }
-        }, 300);
+    private stopVideoStream = () => {
+        if (!this.video) {
+            return;
+        }
+        const stream = this.video.srcObject as MediaStream;
+        if (!stream) {
+            return;
+        }
+        const tracks = stream.getTracks();
+        tracks.forEach((track) => track.stop());
+        this.video.srcObject = null;
     };
+
+    private stopScanning = () => {
+        // stop async decode processes started by each filter
+        for (const interval of Array.from(this.intervals)) {
+            clearInterval(interval);
+        }
+    };
+
+    // Public Methods
 
     @Method()
     async switchCamera() {
-        let devices = [undefined];
+        const ids = this.devices.map((device) => device.deviceId);
 
-        for (const device of this.devices) {
-            devices.push(device.deviceId);
-        }
+        const currentIndex = ids.indexOf(this.activeDeviceId);
 
-        let currentIndex = devices.indexOf(this.activeDeviceId);
-        if (currentIndex === devices.length - 1) {
-            currentIndex = -1;
-        }
-        currentIndex++;
+        const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % ids.length;
 
-        this.activeDeviceId = devices[currentIndex];
+        this.activeDeviceId = ids[nextIndex];
+
         this.status = STATUS.CHANGE_CAMERA;
+
+        this.stopScanning();
+
+        this.stopVideoStream();
     }
 
     @Method()
-    async setFrame(src) {
-        if (!this.host || !this.host.shadowRoot || !this.useFrames) {
+    async setFrame(src: string) {
+        if (!this.useFrames) {
             return;
         }
 
-        if (!this.useFramesContext.canvas || !this.useFramesContext.stream) {
-            const { shadowRoot } = this.host;
-            const scannerContainer = shadowRoot.querySelector(
-                "#container"
-            ) as HTMLElement;
-            const canvas = createElement("canvas", {
-                id: "frameCanvas",
-                width: scannerContainer.offsetWidth || lastDimensions.width,
-                height: scannerContainer.offsetHeight || lastDimensions.height,
-                style: { position: "absolute", width: "100%", top: 0, left: 0 },
-            }) as any;
-            const stream = canvas.captureStream(30);
-            this.useFramesContext.canvas = canvas;
-            this.useFramesContext.context = canvas.getContext("2d");
-            this.useFramesContext.stream = stream;
-
-            const videoElement = this.host.shadowRoot.querySelector(
-                "#video"
-            ) as HTMLVideoElement;
-            videoElement.onplay = async () => {
-                this.status = STATUS.IN_PROGRESS;
-                this.cleanupOverlays();
-                await this.drawOverlays();
-                videoElement.removeAttribute("hidden");
-            };
-            videoElement.srcObject = this.useFramesContext.stream;
+        if (!this.host || !this.host.shadowRoot) {
+            await this.host.componentOnReady();
         }
 
-        const imageElement = new Image();
-        imageElement.addEventListener("load", () => {
-            // scale image that will be played as stream according to screen dimensions
-            const [x, y, w, h] = computeElementScalingAccordingToScreen(
-                imageElement,
-                this.useFramesContext.canvas
-            );
-            this.useFramesContext.context.drawImage(imageElement, x, y, w, h);
-        });
-        imageElement.src = src;
+        const image = await loadFrame(src);
+
+        if (!this.frame.canvas) {
+            const canvas = this.host.shadowRoot.querySelector("#frame") as HTMLCanvasElement;
+            canvas.width = this.container.offsetWidth;
+            canvas.height = this.container.offsetHeight;
+
+            const points = drawFrameOnCanvas(image, canvas);
+
+            canvas.hidden = false
+
+            await this.onVideoPlay();
+
+            this.frame = { canvas, source: image, points };
+
+            await this.startScanningUsingFrames();
+
+            return;
+        }
+
+        drawFrameOnCanvas(this.frame.source, this.frame.canvas);
     }
+
+    // Lifecycle
 
     async componentWillLoad() {
-        const tick = () => {
-            if (window["ZXing"] && !this.ZXing && !this.codeReader) {
-                this.ZXing = window["ZXing"];
-                this.codeReader = new this.ZXing.BrowserMultiFormatReader(
-                    null,
-                    INTERVAL_BETWEEN_SCANS
-                );
-                this.invertedCodeReader = new this.ZXing.BrowserMultiFormatReader(
-                    null,
-                    INTERVAL_BETWEEN_INVERTED_SCANS
-                );
-                this.status = STATUS.LOAD_CAMERAS;
-                if (
-                    (!this.host || !this.host.isConnected) &&
-                    this.codeReader &&
-                    this.invertedCodeReader
-                ) {
-                    this.status = STATUS.INIT;
-                    this.codeReader.reset();
-                    this.invertedCodeReader.reset();
-                }
-            } else {
-                setTimeout(tick, INTERVAL_ZXING_LOADED);
-            }
-        };
-
-        tick();
-    }
-
-    async componentWillRender() {
-        // ZXing unloaded
-        if (!this.ZXing) {
-            return;
-        }
-
-        // No devices yet
-        if (this.devices.length === 0 || !this.activeDeviceId) {
-            try {
-                this.devices = await this.codeReader.listVideoInputDevices();
-            } catch (error) {
-                // console.error(error);
-            }
-
-            if (this.devices.length === 0) {
-                this.status = STATUS.NO_DETECTION;
-            }
-        }
-    }
-
-    async componentDidRender() {
         if (!this.host.isConnected) {
             return;
         }
 
-        this.tryScanning(this.activeDeviceId);
+        this.status = STATUS.LOAD_CAMERAS;
+    }
 
-        const toggle = this.host.shadowRoot.querySelector(
-            "[change-camera]"
-        ) as HTMLButtonElement;
-        if (toggle) {
-            toggle.onclick = async () => await this.switchCamera();
+    async componentWillRender() {
+        if (this.useFrames) {
+            return;
+        }
+
+        if (this.activeDeviceId) {
+            return;
+        }
+
+        if (this.devices.length !== 0) {
+            return;
+        }
+
+        try {
+            this.devices = await BrowserMultiFormatReader.listVideoInputDevices();
+        } catch (error) {
+            console.error("[psk-barcode-scanner] Error while getting video devices", error);
+        }
+
+        if (this.devices.length === 0) {
+            this.status = STATUS.NO_DETECTION;
         }
     }
 
+    async componentDidRender() {
+        this.initializeReferencesToElements();
+
+        await this.startScanning(this.activeDeviceId);
+
+        this.attachOnClickForChangeCamera();
+    }
+
     async disconnectedCallback() {
-        if (this.codeReader) {
-            this.codeReader.reset();
-        }
-        if (this.invertedCodeReader) {
-            this.invertedCodeReader.reset();
-        }
+        this.stopScanning();
+        this.stopVideoStream();
     }
 
     render() {
         return [
-            <script async src={src} />,
-            <div
-                title={this.host.getAttribute("title")}
-                part="base"
-                style={style.base}
-            >
+            <div part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
-                    <input
-                        type="file"
-                        accept="video/*"
-                        capture="environment"
-                        style={style.input}
-                    />
+                    <input type="file" accept="video/*" capture="environment" style={style.input} />
                     <video
                         id="video"
                         part="video"
-                        muted
+                        onPlay={this.onVideoPlay}
                         autoplay
                         playsinline
                         hidden
                         style={style.video}
                     />
-                    <video
-                        id="invertedVideo"
-                        muted
-                        autoplay
-                        playsinline
-                        hidden
-                        style={style.invertedVideo}
-                    />
-                    <div
-                        id="content"
-                        part="content"
-                        innerHTML={this.renderContent()}
-                    />
+                    <canvas id="frame" part="frame" hidden style={style.video} />
+                    <div id="content" part="content" innerHTML={this.renderContent()} />
                 </div>
             </div>,
         ];
