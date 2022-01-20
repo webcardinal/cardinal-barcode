@@ -13,7 +13,7 @@
     {
       "name": "data",
       "type": "string",
-      "mutable": false,
+      "mutable": true,
       "attr": "data",
       "reflectToAttr": false,
       "docs": "The model-handler scope that will be updated with the retrieved data from the scanner.",
@@ -85,7 +85,7 @@
         "type": "Promise<void>",
         "docs": ""
       },
-      "signature": "setFrame(src: any) => Promise<void>",
+      "signature": "setFrame(src: string) => Promise<void>",
       "parameters": [],
       "docs": "",
       "docsTags": []
@@ -116,6 +116,10 @@
     },
     {
       "name": "content",
+      "docs": ""
+    },
+    {
+      "name": "frame",
       "docs": ""
     },
     {

@@ -17,7 +17,7 @@
 
 ## Methods
 
-### `setFrame(src: any) => Promise<void>`
+### `setFrame(src: string) => Promise<void>`
 
 
 
@@ -45,6 +45,7 @@ Type: `Promise<void>`
 | `"base"`      |             |
 | `"container"` |             |
 | `"content"`   |             |
+| `"frame"`     |             |
 | `"video"`     |             |
 
 

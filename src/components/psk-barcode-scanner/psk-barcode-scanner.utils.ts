@@ -293,21 +293,8 @@ export function waitUntilVideoMetadataIsLoaded(video: HTMLVideoElement) {
 
 export function setVideoStream(video: HTMLVideoElement, stream: MediaStream) {
     return new Promise<void>((resolve) => {
-        video.addEventListener("loadedmetadata", () => {
-            console.log('loadedmetadata')
-            resolve()
-        }, false);
+        video.addEventListener("loadedmetadata", () => resolve(), false);
         video.srcObject = stream;
-
-        // try {
-        //     console.log('try to load')
-        //     video.load();
-        // } catch (e) {
-        //     console.error('load error', e.message, e)
-        // }
-
-        // console.log('try to play')
-        // video.play();
     });
 }
 

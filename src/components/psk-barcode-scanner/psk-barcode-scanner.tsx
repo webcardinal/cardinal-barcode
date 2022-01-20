@@ -77,7 +77,7 @@ export class PskBarcodeScanner {
     /**
      * The model-handler scope that will be updated with the retrieved data from the scanner.
      */
-    @Prop() data: string;
+    @Prop({ mutable: true }) data: string;
 
     /**
      * Decides if a screenshot is made after scanning.
@@ -441,6 +441,9 @@ export class PskBarcodeScanner {
     };
 
     private stopVideoStream = () => {
+        if (!this.video) {
+            return;
+        }
         const stream = this.video.srcObject as MediaStream;
         if (!stream) {
             return;
