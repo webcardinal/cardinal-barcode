@@ -1,106 +1,14 @@
+import filters from "./psk-barcode-scanner.filters";
+
 type ElementDimensions = {
     width: number;
     height: number;
 };
 
-/**
- * @param elementDimensions {ElementDimensions} - dimensions obtained from HTMLVideoElement of HTMLImageElement
- * @param screenDimensions {ElementDimensions}
- *
- * Similar behavior with CSS "object-fit: cover" for an HTMLElement
- */
-export function computeElementScalingAccordingToScreen(
-    elementDimensions: ElementDimensions,
-    screenDimensions: ElementDimensions
-) {
-    let x, y, w, h;
-
-    const computeRatioUsingWidth = () => {
-        const r = screenDimensions.height / elementDimensions.height;
-
-        w = elementDimensions.width * r;
-        h = screenDimensions.height;
-
-        x = (screenDimensions.width - w) * 0.5;
-        y = 0;
-    };
-
-    const computeRatioUsingHeight = () => {
-        const r = screenDimensions.width / elementDimensions.width;
-
-        w = screenDimensions.width;
-        h = elementDimensions.height * r;
-
-        x = 0;
-        y = (screenDimensions.height - h) * 0.5;
-    };
-
-    if (elementDimensions.height <= elementDimensions.width) {
-        computeRatioUsingWidth();
-
-        if (x > 0 && y <= 0) {
-            computeRatioUsingHeight();
-        }
-    } else {
-        computeRatioUsingHeight();
-
-        if (x <= 0 && y > 0) {
-            computeRatioUsingWidth();
-        }
-    }
-
-    return [x, y, w, h];
-}
-
-// export function computeElementScalingAccordingToCanvas(
-//     elementDimensions: ElementDimensions,
-//     canvasDimensions: ElementDimensions
-// ) {
-//     const [w, h] = scaleScreenToInput(canvasDimensions, elementDimensions);
-//
-//     const newCanvasDimensions: ElementDimensions = { width: w, height: h };
-//
-//     const [x, y] = centerElementInElement(newCanvasDimensions, elementDimensions);
-//
-//     return [x, y, w, h];
-// }
-
-// export function scaleScreenToInput(canvasDimensions: ElementDimensions, elementDimensions: ElementDimensions, ) {
-//     let w, h;
-//
-//     // 1
-//     const rWidth = canvasDimensions.width / elementDimensions.width;
-//
-//     // 2
-//     w = elementDimensions.width;
-//
-//     // 3
-//     h = elementDimensions.height * rWidth;
-//
-//     // 4
-//     if (h <= elementDimensions.height) {
-//         // center
-//         return [w, h];
-//     }
-//
-//     // 5
-//     const rHeight = elementDimensions.height / h;
-//
-//     // 6
-//     h = elementDimensions.height;
-//
-//     // 7
-//     w = elementDimensions.width * rHeight;
-//
-//     return [w, h];
-// }
-
 export function scale(element: ElementDimensions, screen: ElementDimensions) {
     const r = Math.min(element.width / screen.width, element.height / screen.height);
-
     const w = screen.width * r;
     const h = screen.height * r;
-
     return [w, h];
 }
 
@@ -121,66 +29,6 @@ export function center(target: ElementDimensions, background: ElementDimensions)
     return [x, y];
 }
 
-// function centerElementInElement(target: ElementDimensions, background: ElementDimensions) {
-//     const max = {
-//         width: Math.max(target.width, background.width),
-//         height: Math.max(target.height, background.height),
-//     };
-//
-//     const min = {
-//         width: Math.min(target.width, background.width),
-//         height: Math.min(target.height, background.height),
-//     };
-//
-//     const x = (max.width - min.width) * 0.5;
-//     const y = (max.height - min.height) * 0.5;
-//
-//     return [x, y];
-// }
-
-// export function computeElementScalingAccordingToCanvas(
-//     elementDimensions: ElementDimensions,
-//     canvasDimensions: ElementDimensions
-// ) {
-//     let x, y, w, h;
-//
-//     const computeRatioUsingWidth = () => {
-//         const r = canvasDimensions.height / elementDimensions.height;
-//
-//         w = elementDimensions.width * r;
-//         h = canvasDimensions.height;
-//
-//         x = (canvasDimensions.width - w) * 0.5;
-//         y = 0;
-//     };
-//
-//     const computeRatioUsingHeight = () => {
-//         const r = canvasDimensions.width / elementDimensions.width;
-//
-//         w = canvasDimensions.width;
-//         h = elementDimensions.height * r;
-//
-//         x = 0;
-//         y = (canvasDimensions.height - h) * 0.5;
-//     };
-//
-//     if (elementDimensions.height <= elementDimensions.width) {
-//         computeRatioUsingWidth();
-//
-//         if (x > 0 && y <= 0) {
-//             computeRatioUsingHeight();
-//         }
-//     } else {
-//         computeRatioUsingHeight();
-//
-//         if (x <= 0 && y > 0) {
-//             computeRatioUsingWidth();
-//         }
-//     }
-//
-//     return [x, y, w, h];
-// }
-
 export function isElementVisibleInViewport(element) {
     const rect = element.getBoundingClientRect();
 
@@ -195,71 +43,85 @@ export function isElementVisibleInViewport(element) {
 export function drawFrameOnCanvas(
     source: HTMLVideoElement | HTMLImageElement,
     canvas: HTMLCanvasElement,
-    options: { points?: number[] } = {}
+    options: { points?: number[]; stopInternalCropping?: boolean }
 ) {
-    if (!options)  {
+    if (!options || typeof options !== "object") {
         options = {};
     }
-
-    const input = {
-        width: canvas.width,
-        height: canvas.height
-    };
-
-    if (source instanceof HTMLVideoElement) {
-        // console.log("video", { width: source.videoWidth, height: source.videoHeight });
-
-        if (source.videoWidth) {
-            input.width = source.videoWidth
-            input.height = source.videoHeight
-        }
-    } else {
-        // console.log("image", { width: source.width, height: source.height });
-
-        input.width = source.width;
-        input.height = source.height;
+    if (typeof options.stopInternalCropping !== "boolean") {
+        options.stopInternalCropping = false;
     }
-
-    // console.log("canvas [1]", canvas.id, { width: canvas.width, height: canvas.height });
 
     const context = canvas.getContext("2d");
 
+    context.imageSmoothingEnabled = false;
+
     if (options.points && options.points.length === 6) {
         const [sx, sy, sw, sh, dx, dy, dw, dh] = options.points;
+        context.imageSmoothingEnabled = false;
         context.drawImage(source, sx, sy, sw, sh, dx, dy, dw, dh);
         return options.points;
     }
 
-    // if (options.isVisible) {
-    //     const [x, y, w, h] = computeElementScalingAccordingToScreen(input, canvas);
-    //     context.drawImage(source, x, y, w, h);
-    //     return;
-    // }
+    const inputDimensions = {
+        width: canvas.width,
+        height: canvas.height,
+    };
 
-    const [w, h] = scale(input, canvas);
-    const [x, y] = center({ width: w, height: h }, input);
+    if (source instanceof HTMLVideoElement) {
+        // console.log("video", { width: source.videoWidth, height: source.videoHeight });
+        if (source.videoWidth) {
+            inputDimensions.width = source.videoWidth;
+            inputDimensions.height = source.videoHeight;
+        }
+    } else {
+        // console.log("image", { width: source.width, height: source.height });
+        inputDimensions.width = source.width;
+        inputDimensions.height = source.height;
+    }
 
-    canvas.width = w;
-    canvas.height = h;
+    if (options.stopInternalCropping) {
+        canvas.width = inputDimensions.width;
+        canvas.height = inputDimensions.height;
+        const p = [0, 0, inputDimensions.width, inputDimensions.height, 0, 0, inputDimensions.width, inputDimensions.height];
+        context.drawImage.apply(context, [source, ...p]);
+        return p;
+    }
 
-    // console.log('context', { x, y, w, h, source });
+    let [w, h] = scale(inputDimensions, canvas);
 
-    // context.fillStyle = "#FF000050";
-    // context.fillRect(0, 0, w, h);
+    // console.log(
+    //     'screen', {
+    //         width: canvas.width,
+    //         height: canvas.height,
+    //     },
+    //     'canvas', {
+    //         width: w,
+    //         height: h,
+    //     },
+    //     'frame', {
+    //         width: input.width,
+    //         height: input.height,
+    //     },
+    //     'not-rounded', {
+    //         width: w,
+    //         height: h
+    //     }
+    // );
 
-    context.drawImage(source, x, y, w, h, 0, 0, w, h);
+    canvas.width = Math.floor(w);
+    canvas.height = Math.floor(h);
 
-    return [x, y, w, h, 0, 0, w, h]
+    let [x, y] = center(canvas, inputDimensions);
 
-    // console.log("canvas [2]", canvas.id, { width: canvas.width, height: canvas.height });
+    // x = Math.floor(x)
+    // y = Math.floor(y)
 
-    // const src = canvas.toDataURL("image/png");
-    // const a = document.createElement('a');
-    // a.href = src;
-    // a.download = "canvas.png";
-    // document.body.appendChild(a);
-    // a.click();
-    // document.body.removeChild(a);
+    let p = [x, y, canvas.width, canvas.height, 0, 0, canvas.width, canvas.height];
+
+    context.drawImage.apply(context, [source, ...p]);
+
+    return p;
 }
 
 export function waitUntilElementIsVisibleInViewport(element, delay) {
@@ -344,22 +206,15 @@ export async function loadFrame(src: string) {
     });
 }
 
-export function captureFrame(video: HTMLVideoElement) {
-    const canvas = document.createElement("canvas");
-    canvas.width = video.clientWidth;
-    canvas.height = video.clientHeight;
+export function captureFrame(canvas: HTMLCanvasElement) {
+    if (canvas.id === "invertedSymbols") {
+        filters.invertedSymbolsFilter({ canvas });
+    }
 
-    const [x, y, w, h] = computeElementScalingAccordingToScreen(
-        {
-            width: video.videoWidth,
-            height: video.videoHeight,
-        },
-        canvas
-    );
-
-    const context = canvas.getContext("2d");
-    context.drawImage(video, x, y, w, h);
-    return canvas.toDataURL("image/jpeg");
+    return {
+        png: canvas.toDataURL("image/png"),
+        jpg: canvas.toDataURL("image/jpeg"),
+    };
 }
 
 export const style = {

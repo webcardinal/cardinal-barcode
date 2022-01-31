@@ -29,9 +29,9 @@
   "license": "MIT",
   "dependencies": {
     "@zxing/browser": "^0.0.10",
-	"@zxing/library": "^0.19.1"
+    "@zxing/library": "^0.19.1"
   },
   "prettier": {
-      "printWidth": 120
+    "printWidth": 120
   }
 }

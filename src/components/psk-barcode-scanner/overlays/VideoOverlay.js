@@ -65,7 +65,7 @@ export default class VideoOverlay extends CanvasOverlay {
         ctx.lineTo(x1, y1);
         ctx.lineTo(x2, y2);
       } else {
-        const gap = 60;
+        const gap = 0;
         const size = frameWidth - 2 * gap;
         ctx.rect(xPadding + gap, yPadding + gap, size, size);
       }

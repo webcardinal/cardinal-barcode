@@ -1,4 +1,4 @@
-import { Build, Component, Prop, State, Element, Method, h } from "@stencil/core";
+import { Component, Prop, State, Element, Method, h } from "@stencil/core";
 import type { HTMLStencilElement } from "@stencil/core/internal";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import { BindModel } from "@cardinal/internals";
@@ -17,6 +17,7 @@ import {
 } from "./psk-barcode-scanner.utils";
 import filters from "./psk-barcode-scanner.filters";
 import type { FilterProps } from "./psk-barcode-scanner.filters";
+import { InternalState, STATUS } from "./psk-barcode-scanner.status";
 
 type Scanner = {
     reader: BrowserMultiFormatReader;
@@ -28,17 +29,11 @@ type Frame = {
     points: number[];
 };
 
-const INTERVAL_BETWEEN_SCANS = 1000;
-
-enum STATUS {
-    INIT = "Initializing component...",
-    LOAD_CAMERAS = "Detecting your cameras...",
-    IN_PROGRESS = "Detection in progress...",
-    DONE = "Scan done.",
-    NO_DETECTION = "No camera detected.",
-    ACCESS_DENIED = "Access denied",
-    CHANGE_CAMERA = "Change camera",
-}
+// const INTERVAL_BETWEEN_SCANS = 1000; // 1fr/s
+// const INTERVAL_BETWEEN_SCANS = 250; // 4fr/s
+const INTERVAL_BETWEEN_SCANS = 125; // 8fr/s
+// const INTERVAL_BETWEEN_SCANS = 25; // 40fr/s
+// const INTERVAL_BETWEEN_SCANS = 50 / 3; // 60fs/s
 
 const templates = {
     init: createElement("div", {
@@ -82,21 +77,23 @@ export class PskBarcodeScanner {
     /**
      * Decides if a screenshot is made after scanning.
      */
-    @Prop() snapVideo = false;
-
-    /**
-     * Decides if internal status of component is logged.
-     */
-    @Prop() noLogs = false;
+    @Prop({ reflect: true }) snapVideo = false;
 
     /**
      * If <code>true</code>, setFrames can be used and custom frames will be scanned.
      */
     @Prop({ reflect: true }) useFrames = false;
 
-    @State() status: STATUS = STATUS.INIT;
+    @Prop({ reflect: true }) stopInternalCropping = false;
+
+    /**
+     * Decides if internal status of component is logged.
+     */
+    @Prop() noLogs = false;
 
     @State() activeDeviceId: string;
+
+    private state = new InternalState(STATUS.INIT, !this.noLogs);
 
     private video: HTMLVideoElement;
 
@@ -158,23 +155,19 @@ export class PskBarcodeScanner {
     };
 
     private renderContent = () => {
-        if (Build.isDev || !this.noLogs) {
-            console.log("[psk-barcode-scanner] Status:", this.status);
-        }
-
         let element;
-        switch (this.status) {
+        switch (this.state.status) {
             case STATUS.INIT:
                 element = this.createSlotElement("init");
                 break;
             case STATUS.NO_DETECTION:
                 element = this.createSlotElement("error");
                 break;
-            case STATUS.DONE:
+            case STATUS.DETECTION_DONE:
                 element = this.createSlotElement("done");
                 break;
-            case STATUS.LOAD_CAMERAS:
-                if (this.host.hasAttribute("disable-some-slots")) {
+            case STATUS.LOADING_CAMERAS:
+                if (this.host.hasAttribute("dev-disable-some-slots")) {
                     element = "";
                     return;
                 }
@@ -185,7 +178,7 @@ export class PskBarcodeScanner {
                 element = this.createSlotElement("access_denied");
                 break;
             default: {
-                if (this.host.hasAttribute("disable-some-slots")) {
+                if (this.host.hasAttribute("dev-disable-some-slots")) {
                     element = "";
                     return;
                 }
@@ -226,16 +219,23 @@ export class PskBarcodeScanner {
     // Event handlers
 
     private onVideoPlay = async () => {
-        this.status = STATUS.IN_PROGRESS;
         this.cleanupOverlays();
         await this.drawOverlays();
         this.video.removeAttribute("hidden");
     };
 
+    private onCanvasPlay = async () => {
+        this.cleanupOverlays();
+        await this.drawOverlays();
+        this.frame.canvas.removeAttribute("hidden");
+    };
+
     // Decoding...
 
-    private decodeCallback = (error, result) => {
-        if (result && this.status === STATUS.IN_PROGRESS) {
+    private decodeCallback = (error, result, payload) => {
+        if (result && this.state.status === STATUS.DETECTION_IN_PROGRESS) {
+            this.state.status = STATUS.DETECTION_DONE;
+
             this.stopScanning();
 
             if (!this.noLogs) {
@@ -243,8 +243,6 @@ export class PskBarcodeScanner {
             }
 
             if (this.modelHandler) {
-                this.status = STATUS.DONE;
-
                 audio.play();
 
                 if (this.overlay) {
@@ -256,7 +254,18 @@ export class PskBarcodeScanner {
                 }
 
                 if (this.host.hasAttribute("results")) {
-                    result.frame = captureFrame(this.video);
+                    result.frames = captureFrame(payload.canvas);
+                    result.video = {
+                        width: this.video.videoWidth,
+                        height: this.video.videoHeight,
+                    };
+
+                    try {
+                        result.container = JSON.parse(JSON.stringify(this.container.getBoundingClientRect()));
+                    } catch (e) {
+                        console.error("[psk-barcode-scanner] Could not log container dimensions!");
+                    }
+
                     this.modelHandler.updateModel("results", result);
                 }
 
@@ -286,10 +295,22 @@ export class PskBarcodeScanner {
         const canvas = this.frame.canvas.cloneNode() as HTMLCanvasElement;
 
         canvas.id = filterId;
+        canvas.style.position = "fixed";
+        canvas.style.left = "0";
+        canvas.style.top = "0";
+        canvas.style.width = "unset";
+        canvas.style.height = "unset";
+        canvas.style.objectFit = "unset";
+        canvas.hidden = true;
 
-        drawFrameOnCanvas(this.frame.source, canvas, { points: this.frame.points });
+        drawFrameOnCanvas(this.frame.source, canvas, {
+            points: this.frame.points,
+            stopInternalCropping: this.stopInternalCropping,
+        });
 
-        // this.host.shadowRoot.append(canvas)
+        if (this.host.hasAttribute("dev-activate-internal-canvases")) {
+            this.host.shadowRoot.append(canvas);
+        }
 
         const hints = new Map();
         hints.set(3, true); // TRY_HARDER
@@ -300,12 +321,15 @@ export class PskBarcodeScanner {
         };
 
         const decodeFromCanvas = async () => {
-            if (this.status === STATUS.DONE) {
+            if (this.state.status === STATUS.DETECTION_DONE) {
                 return true;
             }
 
             if (!this.useFrames) {
-                drawFrameOnCanvas(this.frame.source, canvas, { points: this.frame.points });
+                drawFrameOnCanvas(this.frame.source, canvas, {
+                    points: this.frame.points,
+                    stopInternalCropping: this.stopInternalCropping,
+                });
             }
 
             if (typeof filterAction === "function") {
@@ -317,7 +341,7 @@ export class PskBarcodeScanner {
             try {
                 const result = scanner.reader.decodeFromCanvas(canvas) as any;
                 result.filter = { name: filterId, width: canvas.width, height: canvas.height };
-                this.decodeCallback(undefined, result);
+                this.decodeCallback(undefined, result, { canvas });
                 return true;
             } catch (error) {
                 return false;
@@ -329,7 +353,7 @@ export class PskBarcodeScanner {
         }
 
         const interval = setInterval(async () => {
-            if (this.status === STATUS.DONE) {
+            if (this.state.status === STATUS.DETECTION_DONE) {
                 clearInterval(interval);
                 this.intervals.delete(interval);
                 return;
@@ -362,19 +386,41 @@ export class PskBarcodeScanner {
     };
 
     private startScanningUsingFrames = async () => {
-        this.status = STATUS.IN_PROGRESS;
         await this.scanUsingFilters();
     };
 
     private startScanningUsingNavigator = async (deviceId: string) => {
+        let width = this.container.offsetWidth;
+        let height = this.container.offsetHeight;
+
+        // since stencil-router uses display "none" in order to avoid flickering
+        // values for offset/client dimensions will be 0
+        // so in order to get real values
+        if (window.WebCardinal?.state?.page?.loader && width === 0) {
+            const stencilRoute = window.WebCardinal.state.page.loader.parentElement;
+            const display = stencilRoute.style.display;
+
+            stencilRoute.style.display = "unset";
+
+            width = this.container.offsetWidth;
+            height = this.container.offsetHeight;
+
+            if (window?.cardinal?.barcodeScanner?.dimensions) {
+                window.cardinal.barcodeScanner.dimensions.width = width;
+                window.cardinal.barcodeScanner.dimensions.height = height;
+            }
+
+            stencilRoute.style.display = display;
+        }
+
         const video = this.video;
 
         const constraints = {
             audio: false,
             video: {
                 facingMode: "environment",
-                width: { min: this.container.offsetWidth, ideal: 3 * this.container.offsetWidth },
-                height: { min: this.container.offsetHeight, ideal: 3 * this.container.offsetHeight },
+                width: { ideal: 3 * width },
+                height: { ideal: 3 * height },
             },
         };
 
@@ -384,17 +430,15 @@ export class PskBarcodeScanner {
         }
 
         try {
-            const canvas = createElement("canvas", {
-                id: "videoCanvas",
-                width: this.container.offsetWidth,
-                height: this.container.offsetHeight,
-            }) as HTMLCanvasElement;
+            const canvas = createElement("canvas", { id: "videoCanvas", width, height }) as HTMLCanvasElement;
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            await setVideoStream(this.video, stream);
-            const points = drawFrameOnCanvas(this.video, canvas);
-            this.frame = { canvas, source: this.video, points };
+            await setVideoStream(video, stream);
+            const points = drawFrameOnCanvas(video, canvas, {
+                stopInternalCropping: this.stopInternalCropping,
+            });
+            this.frame = { canvas, source: video, points };
         } catch (error) {
-            this.status = STATUS.ACCESS_DENIED;
+            this.state.status = STATUS.ACCESS_DENIED;
             console.error("[psk-barcode-scanner] Error while getting userMediaStream", error);
         }
 
@@ -420,23 +464,15 @@ export class PskBarcodeScanner {
     };
 
     private startScanning = async (deviceId: string) => {
-        switch (this.status) {
-            case STATUS.LOAD_CAMERAS:
-            case STATUS.CHANGE_CAMERA: {
-                // wait until video is in viewport
-                await waitUntilElementIsVisibleInViewport(this.video, 50);
+        // wait until video is in viewport
+        await waitUntilElementIsVisibleInViewport(this.video, 50);
 
-                // request an animation frame
-                await waitUntilAnimationFrameIsPossible();
+        // request an animation frame
+        await waitUntilAnimationFrameIsPossible();
 
-                // start scanning...
-                if (!this.useFrames) {
-                    this.status = STATUS.IN_PROGRESS;
-                    await this.startScanningUsingNavigator(deviceId);
-                }
-
-                break;
-            }
+        // start scanning...
+        if (!this.useFrames) {
+            await this.startScanningUsingNavigator(deviceId);
         }
     };
 
@@ -454,9 +490,12 @@ export class PskBarcodeScanner {
     };
 
     private stopScanning = () => {
+        this.state.status = STATUS.DETECTION_DONE;
+
         // stop async decode processes started by each filter
         for (const interval of Array.from(this.intervals)) {
             clearInterval(interval);
+            this.intervals.delete(interval);
         }
     };
 
@@ -472,11 +511,13 @@ export class PskBarcodeScanner {
 
         this.activeDeviceId = ids[nextIndex];
 
-        this.status = STATUS.CHANGE_CAMERA;
+        this.state.status = STATUS.CHANGE_CAMERA;
 
         this.stopScanning();
 
         this.stopVideoStream();
+
+        await this.startScanning(this.activeDeviceId);
     }
 
     @Method()
@@ -493,23 +534,27 @@ export class PskBarcodeScanner {
 
         if (!this.frame.canvas) {
             const canvas = this.host.shadowRoot.querySelector("#frame") as HTMLCanvasElement;
-            canvas.width = this.container.offsetWidth;
-            canvas.height = this.container.offsetHeight;
+            const { width, height } = this.container.getBoundingClientRect();
 
-            const points = drawFrameOnCanvas(image, canvas);
+            canvas.width = Math.floor(width);
+            canvas.height = Math.floor(height);
 
-            canvas.hidden = false
-
-            await this.onVideoPlay();
+            const points = drawFrameOnCanvas(image, canvas, {
+                stopInternalCropping: this.stopInternalCropping,
+            });
 
             this.frame = { canvas, source: image, points };
+
+            await this.onCanvasPlay();
 
             await this.startScanningUsingFrames();
 
             return;
         }
 
-        drawFrameOnCanvas(this.frame.source, this.frame.canvas);
+        drawFrameOnCanvas(this.frame.source, this.frame.canvas, {
+            stopInternalCropping: this.stopInternalCropping,
+        });
     }
 
     // Lifecycle
@@ -519,21 +564,7 @@ export class PskBarcodeScanner {
             return;
         }
 
-        this.status = STATUS.LOAD_CAMERAS;
-    }
-
-    async componentWillRender() {
-        if (this.useFrames) {
-            return;
-        }
-
-        if (this.activeDeviceId) {
-            return;
-        }
-
-        if (this.devices.length !== 0) {
-            return;
-        }
+        this.state.status = STATUS.LOADING_CAMERAS;
 
         try {
             this.devices = await BrowserMultiFormatReader.listVideoInputDevices();
@@ -542,16 +573,26 @@ export class PskBarcodeScanner {
         }
 
         if (this.devices.length === 0) {
-            this.status = STATUS.NO_DETECTION;
+            this.state.status = STATUS.NO_DETECTION;
+            return;
         }
+
+        this.state.status = STATUS.DETECTION_STARTED;
     }
 
     async componentDidRender() {
-        this.initializeReferencesToElements();
+        switch (this.state.status) {
+            case STATUS.DETECTION_STARTED:
+            case STATUS.CHANGE_CAMERA: {
+                this.state.status = STATUS.DETECTION_IN_PROGRESS;
 
-        await this.startScanning(this.activeDeviceId);
+                this.initializeReferencesToElements();
 
-        this.attachOnClickForChangeCamera();
+                await this.startScanning(undefined);
+
+                this.attachOnClickForChangeCamera();
+            }
+        }
     }
 
     async disconnectedCallback() {
@@ -560,7 +601,7 @@ export class PskBarcodeScanner {
     }
 
     render() {
-        return [
+        return (
             <div part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
                     <input type="file" accept="video/*" capture="environment" style={style.input} />
@@ -576,7 +617,7 @@ export class PskBarcodeScanner {
                     <canvas id="frame" part="frame" hidden style={style.video} />
                     <div id="content" part="content" innerHTML={this.renderContent()} />
                 </div>
-            </div>,
-        ];
+            </div>
+        );
     }
 }

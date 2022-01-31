@@ -27,6 +27,7 @@ export namespace Components {
           * Decides if a screenshot is made after scanning.
          */
         "snapVideo": boolean;
+        "stopInternalCropping": boolean;
         "switchCamera": () => Promise<void>;
         /**
           * If <code>true</code>, setFrames can be used and custom frames will be scanned.
@@ -73,6 +74,7 @@ declare namespace LocalJSX {
           * Decides if a screenshot is made after scanning.
          */
         "snapVideo"?: boolean;
+        "stopInternalCropping"?: boolean;
         /**
           * If <code>true</code>, setFrames can be used and custom frames will be scanned.
          */

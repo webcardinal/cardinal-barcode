@@ -48,8 +48,25 @@
       "type": "boolean",
       "mutable": false,
       "attr": "snap-video",
-      "reflectToAttr": false,
+      "reflectToAttr": true,
       "docs": "Decides if a screenshot is made after scanning.",
+      "docsTags": [],
+      "default": "false",
+      "values": [
+        {
+          "type": "boolean"
+        }
+      ],
+      "optional": false,
+      "required": false
+    },
+    {
+      "name": "stopInternalCropping",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "stop-internal-cropping",
+      "reflectToAttr": true,
+      "docs": "",
       "docsTags": [],
       "default": "false",
       "values": [
