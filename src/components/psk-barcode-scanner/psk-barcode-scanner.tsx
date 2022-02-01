@@ -511,11 +511,11 @@ export class PskBarcodeScanner {
 
         this.activeDeviceId = ids[nextIndex];
 
-        this.state.status = STATUS.CHANGE_CAMERA;
-
         this.stopScanning();
 
         this.stopVideoStream();
+
+        this.state.status = STATUS.CHANGE_CAMERA;
 
         await this.startScanning(this.activeDeviceId);
     }
