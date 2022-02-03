@@ -508,8 +508,6 @@ export class PskBarcodeScanner {
         this.stopVideoStream();
 
         this.state.status = STATUS.CHANGE_CAMERA;
-
-        await this.startScanning(this.activeDeviceId);
     }
 
     @Method()
@@ -593,7 +591,7 @@ export class PskBarcodeScanner {
                 // request an animation frame
                 await waitUntilAnimationFrameIsPossible();
 
-                await this.startScanning(undefined);
+                await this.startScanning(this.activeDeviceId);
             }
         }
     }
