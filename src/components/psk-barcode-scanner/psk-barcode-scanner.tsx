@@ -234,8 +234,6 @@ export class PskBarcodeScanner {
 
     private decodeCallback = (error, result, payload) => {
         if (result && this.state.status === STATUS.DETECTION_IN_PROGRESS) {
-            this.state.status = STATUS.DETECTION_DONE;
-
             this.stopScanning();
 
             if (!this.noLogs) {
@@ -464,12 +462,6 @@ export class PskBarcodeScanner {
     };
 
     private startScanning = async (deviceId: string) => {
-        // wait until video is in viewport
-        await waitUntilElementIsVisibleInViewport(this.video, 50);
-
-        // request an animation frame
-        await waitUntilAnimationFrameIsPossible();
-
         // start scanning...
         if (!this.useFrames) {
             await this.startScanningUsingNavigator(deviceId);
@@ -572,6 +564,11 @@ export class PskBarcodeScanner {
             console.error("[psk-barcode-scanner] Error while getting video devices", error);
         }
 
+        if (this.useFrames) {
+            this.state.status = STATUS.DETECTION_STARTED;
+            return;
+        }
+
         if (this.devices.length === 0) {
             this.state.status = STATUS.NO_DETECTION;
             return;
@@ -586,11 +583,17 @@ export class PskBarcodeScanner {
             case STATUS.CHANGE_CAMERA: {
                 this.state.status = STATUS.DETECTION_IN_PROGRESS;
 
+                // initialize references and listeners to DOM elements
                 this.initializeReferencesToElements();
+                this.attachOnClickForChangeCamera();
+
+                // wait until video is in viewport
+                await waitUntilElementIsVisibleInViewport(this.video, 50);
+
+                // request an animation frame
+                await waitUntilAnimationFrameIsPossible();
 
                 await this.startScanning(undefined);
-
-                this.attachOnClickForChangeCamera();
             }
         }
     }
