@@ -13,10 +13,10 @@ import {
     setInLocalStorage,
     setVideoStream,
     snapFrame,
-    style,
     waitUntilAnimationFrameIsPossible,
     waitUntilElementIsVisibleInViewport,
 } from "./psk-barcode-scanner.utils";
+import style, { getCleanupStyleForShadowDOM } from "./psk-barcode-scanner.styles";
 import filters from "./psk-barcode-scanner.filters";
 import type { FilterProps } from "./psk-barcode-scanner.filters";
 import { InternalState, STATUS } from "./psk-barcode-scanner.status";
@@ -32,10 +32,10 @@ type Frame = {
 };
 
 const KEY_ACTIVE_DEVICE = "psk-scanner-device-id";
+const INTERVAL_BETWEEN_SCANS = 125; // 8fr/s
 
 // const INTERVAL_BETWEEN_SCANS = 1000;   // 1fr/s
 // const INTERVAL_BETWEEN_SCANS = 250;    // 4fr/s
-const INTERVAL_BETWEEN_SCANS = 125; // 8fr/s
 // const INTERVAL_BETWEEN_SCANS = 25;     // 40fr/s
 // const INTERVAL_BETWEEN_SCANS = 50 / 3; // 60fs/s
 
@@ -354,6 +354,10 @@ export class PskBarcodeScanner {
             return;
         }
 
+        if (this.useFrames) {
+            return;
+        }
+
         const interval = setInterval(async () => {
             if (this.state.status === STATUS.DETECTION_DONE) {
                 clearInterval(interval);
@@ -614,7 +618,8 @@ export class PskBarcodeScanner {
     }
 
     render() {
-        return (
+        return [
+            <style>{getCleanupStyleForShadowDOM()}</style>,
             <div part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
                     <input type="file" accept="video/*" capture="environment" style={style.input} />
@@ -631,6 +636,6 @@ export class PskBarcodeScanner {
                     <div id="content" part="content" innerHTML={this.renderContent()} />
                 </div>
             </div>
-        );
+        ]
     }
 }
