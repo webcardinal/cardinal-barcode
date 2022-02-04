@@ -217,6 +217,23 @@ export function captureFrame(canvas: HTMLCanvasElement) {
     };
 }
 
+export function setInLocalStorage(key: string, value: string) {
+    if (!('localStorage' in window)) {
+        return false;
+    }
+
+    localStorage.setItem(key, value);
+    return true;
+}
+
+export function getFromLocalStorage(key: string) {
+    if (!('localStorage' in window)) {
+        return undefined;
+    }
+
+    return localStorage.getItem(key);
+}
+
 export const style = {
     base: {
         display: "grid",

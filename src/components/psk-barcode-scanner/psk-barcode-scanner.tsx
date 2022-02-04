@@ -8,7 +8,9 @@ import {
     captureFrame,
     createElement,
     drawFrameOnCanvas,
+    getFromLocalStorage,
     loadFrame,
+    setInLocalStorage,
     setVideoStream,
     snapFrame,
     style,
@@ -29,10 +31,12 @@ type Frame = {
     points: number[];
 };
 
-// const INTERVAL_BETWEEN_SCANS = 1000; // 1fr/s
-// const INTERVAL_BETWEEN_SCANS = 250; // 4fr/s
+const KEY_ACTIVE_DEVICE = "psk-scanner-device-id";
+
+// const INTERVAL_BETWEEN_SCANS = 1000;   // 1fr/s
+// const INTERVAL_BETWEEN_SCANS = 250;    // 4fr/s
 const INTERVAL_BETWEEN_SCANS = 125; // 8fr/s
-// const INTERVAL_BETWEEN_SCANS = 25; // 40fr/s
+// const INTERVAL_BETWEEN_SCANS = 25;     // 40fr/s
 // const INTERVAL_BETWEEN_SCANS = 50 / 3; // 60fs/s
 
 const templates = {
@@ -451,6 +455,7 @@ export class PskBarcodeScanner {
                 const device = tracks[i];
                 if (device.readyState === "live") {
                     this.activeDeviceId = device.getSettings().deviceId;
+                    setInLocalStorage(KEY_ACTIVE_DEVICE, this.activeDeviceId);
                     break;
                 }
             }
@@ -541,7 +546,7 @@ export class PskBarcodeScanner {
 
             return;
         }
-        
+
         this.frame.source = image;
 
         drawFrameOnCanvas(this.frame.source, this.frame.canvas, {
@@ -567,6 +572,11 @@ export class PskBarcodeScanner {
         if (this.useFrames) {
             this.state.status = STATUS.DETECTION_STARTED;
             return;
+        }
+
+        const preferredDeviceId = getFromLocalStorage(KEY_ACTIVE_DEVICE);
+        if (preferredDeviceId) {
+            this.activeDeviceId = preferredDeviceId;
         }
 
         if (this.devices.length === 0) {
