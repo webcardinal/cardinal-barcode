@@ -541,6 +541,8 @@ export class PskBarcodeScanner {
 
             return;
         }
+        
+        this.frame.source = image;
 
         drawFrameOnCanvas(this.frame.source, this.frame.canvas, {
             stopInternalCropping: this.stopInternalCropping,
