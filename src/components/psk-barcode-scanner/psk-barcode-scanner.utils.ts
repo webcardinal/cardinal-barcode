@@ -233,3 +233,15 @@ export function getFromLocalStorage(key: string) {
 
     return localStorage.getItem(key);
 }
+
+export function cloneCanvas(canvas: HTMLCanvasElement) {
+    const newCanvas = document.createElement('canvas');
+    const context = newCanvas.getContext('2d');
+
+    newCanvas.width = canvas.width;
+    newCanvas.height = canvas.height;
+
+    context.drawImage(canvas, 0, 0);
+
+    return newCanvas;
+}
