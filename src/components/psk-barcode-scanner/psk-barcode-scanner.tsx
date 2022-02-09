@@ -1,6 +1,7 @@
 import { Component, Prop, State, Element, Method, h } from "@stencil/core";
 import type { HTMLStencilElement } from "@stencil/core/internal";
 import { BrowserMultiFormatReader } from "@zxing/browser";
+
 import { BindModel } from "@cardinal/internals";
 
 import audio from "./audio";
@@ -14,6 +15,7 @@ import {
     setInLocalStorage,
     setVideoStream,
     snapFrame,
+    timeout,
     waitUntilAnimationFrameIsPossible,
     waitUntilElementIsVisibleInViewport,
 } from "./psk-barcode-scanner.utils";
@@ -22,10 +24,6 @@ import filters from "./psk-barcode-scanner.filters";
 import type { FilterProps } from "./psk-barcode-scanner.filters";
 import { InternalState, STATUS } from "./psk-barcode-scanner.status";
 
-type Scanner = {
-    reader: BrowserMultiFormatReader;
-    controls: any;
-};
 type Frame = {
     canvas: HTMLCanvasElement;
     source: HTMLImageElement | HTMLVideoElement;
@@ -34,12 +32,18 @@ type Frame = {
 };
 
 const KEY_ACTIVE_DEVICE = "psk-scanner-device-id";
-const INTERVAL_BETWEEN_SCANS = 125; // 8fr/s
 
+// INTERVAL_BETWEEN_SCANS is used when Web Workers are deliberate disabled
 // const INTERVAL_BETWEEN_SCANS = 1000;   // 1fr/s
-// const INTERVAL_BETWEEN_SCANS = 250;    // 4fr/s
+const INTERVAL_BETWEEN_SCANS = 250;       // 4fr/s
+// const INTERVAL_BETWEEN_SCANS = 125;    // 8fr/s
 // const INTERVAL_BETWEEN_SCANS = 25;     // 40fr/s
 // const INTERVAL_BETWEEN_SCANS = 50 / 3; // 60fs/s
+
+const DEV_FLAGS = {
+    ACTIVATE_INTERNAL_CANVASES: "dev-activate-internal-canvases",
+    DISABLE_SOME_SLOTS: "dev-disable-some-slots",
+};
 
 const templates = {
     init: createElement("div", {
@@ -83,29 +87,38 @@ export class PskBarcodeScanner {
     /**
      * Decides if a screenshot is made after scanning.
      */
-    @Prop({ reflect: true }) snapVideo = false;
+    @Prop() snapVideo = false;
 
     /**
      * If <code>true</code>, setFrames can be used and custom frames will be scanned.
      */
     @Prop({ reflect: true }) useFrames = false;
 
-    @Prop({ reflect: true }) stopInternalCropping = false;
+    /**
+     * If <code>true</code>, a Web Worker (scanner-worker.js) will be instantiated.
+     * Its purpose is to decode codes.
+     *
+     * If <code>false</code> decoding will take place in the main thread.
+     */
+    @Prop({ reflect: true }) useWebWorker = true;
 
     /**
-     * Decides if internal status of component is logged.
+     * Decides if internal status of component is logged into the console.
      */
-    @Prop() noLogs = false;
+    @Prop() useLogs = true;
+
+    /**
+     * Decides if the received frame should be cropped according with the screen aspect-ration.
+     */
+    @Prop() stopInternalCropping = false;
 
     @State() activeDeviceId: string;
 
-    private state = new InternalState(STATUS.INIT, !this.noLogs);
+    private state = new InternalState(STATUS.INIT, this.useLogs);
 
     private video: HTMLVideoElement;
 
     private container: HTMLDivElement;
-
-    private intervals: Set<number> = new Set<number>();
 
     private devices: MediaDeviceInfo[] = [];
 
@@ -116,14 +129,19 @@ export class PskBarcodeScanner {
         filters: [],
     };
 
+    private scanner: BrowserMultiFormatReader;
+
+    private scanWorker: Worker;
+
     private overlay;
 
+    private useMetadata: boolean;
+
     constructor() {
-        window.addEventListener("resize", () => {
-            window.requestAnimationFrame(async () => {
-                this.cleanupOverlays();
-                await this.drawOverlays();
-            });
+        window.addEventListener("resize", async () => {
+            await waitUntilAnimationFrameIsPossible();
+            this.cleanupOverlays();
+            await this.drawOverlays();
         });
     }
 
@@ -174,7 +192,7 @@ export class PskBarcodeScanner {
                 element = this.createSlotElement("done");
                 break;
             case STATUS.LOADING_CAMERAS:
-                if (this.host.hasAttribute("dev-disable-some-slots")) {
+                if (this.host.hasAttribute(DEV_FLAGS.DISABLE_SOME_SLOTS)) {
                     element = "";
                     return;
                 }
@@ -185,7 +203,7 @@ export class PskBarcodeScanner {
                 element = this.createSlotElement("access_denied");
                 break;
             default: {
-                if (this.host.hasAttribute("dev-disable-some-slots")) {
+                if (this.host.hasAttribute(DEV_FLAGS.DISABLE_SOME_SLOTS)) {
                     element = "";
                     return;
                 }
@@ -237,13 +255,13 @@ export class PskBarcodeScanner {
         this.frame.canvas.removeAttribute("hidden");
     };
 
-    // Decoding...
+    // Scanning & Decoding...
 
     private decodeCallback = (error, result, payload) => {
         if (result && this.state.status === STATUS.DETECTION_IN_PROGRESS) {
             this.stopScanning();
 
-            if (!this.noLogs) {
+            if (this.useLogs) {
                 console.log("[psk-barcode-scanner] Scanned data:", result);
             }
 
@@ -258,12 +276,13 @@ export class PskBarcodeScanner {
                     snapFrame(this.video);
                 }
 
-                if (this.host.hasAttribute("results")) {
+                if (this.useMetadata) {
                     result.frames = captureFrame(payload.canvas);
                     result.video = {
                         width: this.video.videoWidth,
                         height: this.video.videoHeight,
                     };
+                    result.useWebWorker = this.useWebWorker;
 
                     try {
                         result.container = JSON.parse(JSON.stringify(this.container.getBoundingClientRect()));
@@ -292,118 +311,118 @@ export class PskBarcodeScanner {
         }
     };
 
-    private decodeFromFilter = async (
-        filterId: string,
-        filterAction: Function | undefined,
-        intervalBetweenScans: number
-    ) => {
+    private decode = async (canvas: HTMLCanvasElement, filterAction: Function | undefined) => {
+        if (this.state.status === STATUS.DETECTION_DONE) {
+            return;
+        }
+
+        drawFrameOnCanvas(this.frame.source, canvas, {
+            points: this.frame.points,
+            stopInternalCropping: this.stopInternalCropping,
+        });
+
+        const filterId = canvas.id;
+
+        if (typeof filterAction === "function") {
+            // filtered scanning
+            const filterProps: FilterProps = { canvas };
+            await filterAction(filterProps);
+        }
+
+        // decoding in main thread
+        if (!this.useWebWorker) {
+            try {
+                const result = this.scanner.decodeFromCanvas(canvas) as any;
+                result.filter = { name: filterId, width: canvas.width, height: canvas.height };
+                this.decodeCallback(undefined, result, { canvas });
+            } catch (error) {
+                this.decodeCallback(error, undefined, undefined);
+            }
+            return;
+        }
+
+        // decoding in web worker
+        const context = canvas.getContext("2d");
+        const { width, height } = canvas;
+        const imageData = context.getImageData(0, 0, width, height);
+        this.scanWorker.postMessage({ message: "start decoding", imageData, width, height, filterId });
+    };
+
+    private scan = async () => {
+        await Promise.all(this.frame.filters.map((filter) => filter()));
+    };
+
+    private createFilter = (filterId: string, filterAction: Function | undefined) => {
         const canvas = cloneCanvas(this.frame.canvas);
         canvas.id = filterId;
-        canvas.style.position = "fixed";
-        canvas.style.left = "0";
-        canvas.style.top = "0";
         canvas.style.width = "unset";
         canvas.style.height = "unset";
-        canvas.style.objectFit = "unset";
-        canvas.hidden = true;
 
-        const hints = new Map();
-        hints.set(3, true); // TRY_HARDER
-
-        const scanner: Scanner = {
-            reader: new BrowserMultiFormatReader(hints),
-            controls: undefined,
-        };
-
-        if (this.host.hasAttribute("dev-activate-internal-canvases")) {
+        if (this.host.hasAttribute(DEV_FLAGS.ACTIVATE_INTERNAL_CANVASES)) {
+            canvas.style.position = "fixed";
+            canvas.style.left = "0";
+            canvas.style.top = "0";
+            canvas.style.objectFit = "unset";
+            canvas.style.zIndex = "1000";
+            canvas.style.display = "none";
             this.host.shadowRoot.append(canvas);
         }
 
-        const decodeFromCanvas = async () => {
-            if (this.state.status === STATUS.DETECTION_DONE) {
-                return true;
-            }
-
-            drawFrameOnCanvas(this.frame.source, canvas, {
-                points: this.frame.points,
-                stopInternalCropping: this.stopInternalCropping,
-            });
-
-            if (typeof filterAction === "function") {
-                // filtered scanning
-                const filterProps: FilterProps = { canvas };
-                await filterAction(filterProps);
-            }
-
-            try {
-                // 0. no decoding...
-                // return false;
-
-                // 1. decodeFromCanvas
-                const result = scanner.reader.decodeFromCanvas(canvas) as any;
-                result.filter = { name: filterId, width: canvas.width, height: canvas.height };
-                this.decodeCallback(undefined, result, { canvas });
-                return true;
-
-                // 2. decodeFromImageElement
-                // const image = new Image(canvas.width, canvas.height)
-                // image.src = canvas.toDataURL()
-                // const result = await scanner.reader.decodeFromImageElement(image) as any;
-                // result.filter = { name: filterId, width: canvas.width, height: canvas.height };
-                // this.decodeCallback(undefined, result, { canvas });
-                // return true;
-            } catch (error) {
-                return false;
-            }
-        };
-
-        if (this.useFrames) {
-            this.frame.filters.push(decodeFromCanvas);
-            return;
-        }
-
-        if (await decodeFromCanvas()) {
-            return;
-        }
-
-        const interval = setInterval(async () => {
-            if (this.state.status === STATUS.DETECTION_DONE) {
-                clearInterval(interval);
-                this.intervals.delete(interval);
-                return;
-            }
-
-            if (await decodeFromCanvas()) {
-                clearInterval(interval);
-                this.intervals.delete(interval);
-                return;
-            }
-        }, intervalBetweenScans);
-
-        this.intervals.add(interval);
+        const filter = () => this.decode(canvas, filterAction);
+        this.frame.filters.push(filter);
     };
 
-    // Scanning...
+    private createFilters = async () => {
+        if (!this.useWebWorker) {
+            const hints = new Map();
+            hints.set(3, true); // TRY_HARDER
+            this.scanner = new BrowserMultiFormatReader(hints);
 
-    private scanUsingFilters = async () => {
+            // this mechanism is not recommended since de UI thread is slowed down
+            const scanInterval = async () => {
+                await this.scan();
+                await timeout(INTERVAL_BETWEEN_SCANS);
+                await scanInterval();
+            };
+            scanInterval();
+        } else {
+            const filters = new Set<string>();
+            this.scanWorker.addEventListener("message", async (e) => {
+                const { error, result, filterId, metadata } = e.data;
+
+                if (error && !this.useFrames) {
+                    filters.add(filterId);
+                    if (filters.size === this.frame.filters.length) {
+                        filters.clear();
+                        await this.scan();
+                    }
+                }
+
+                let workerCanvas = undefined;
+                if (!error && this.useMetadata) {
+                    workerCanvas = createElement("canvas", {
+                        id: filterId,
+                        width: metadata.width,
+                        height: metadata.height,
+                    });
+                    workerCanvas.getContext("2d").putImageData(metadata.imageData, 0, 0);
+                }
+
+                this.decodeCallback(error, result, { canvas: workerCanvas });
+            });
+            this.scanWorker.addEventListener("error", (e) => {
+                console.error("[psk-barcode-scanner] scan-worker error", e);
+            });
+        }
+
         // default filter
-        const defaultFilter = this.decodeFromFilter("default", undefined, INTERVAL_BETWEEN_SCANS);
+        this.createFilter("default", undefined);
 
         // invertedSymbols filter
-        const invertedSymbolsFilter = this.decodeFromFilter(
-            "invertedSymbols",
-            filters.invertedSymbolsFilter,
-            INTERVAL_BETWEEN_SCANS
-        );
-
-        await Promise.all([defaultFilter, invertedSymbolsFilter]);
+        this.createFilter("invertedSymbols", filters.invertedSymbolsFilter);
     };
 
-    private startScanningUsingFrames = async () => {
-        await this.scanUsingFilters();
-    };
-
-    private startScanningUsingNavigator = async (deviceId: string) => {
+    private startVideoStream = async (deviceId: string) => {
         let width = this.container.offsetWidth;
         let height = this.container.offsetHeight;
 
@@ -475,14 +494,9 @@ export class PskBarcodeScanner {
             console.error("[psk-barcode-scanner] Error while getting activeDeviceId", error);
         }
 
-        await this.scanUsingFilters();
-    };
+        await this.createFilters();
 
-    private startScanning = async (deviceId: string) => {
-        // start scanning...
-        if (!this.useFrames) {
-            await this.startScanningUsingNavigator(deviceId);
-        }
+        await this.scan();
     };
 
     private stopVideoStream = () => {
@@ -501,10 +515,9 @@ export class PskBarcodeScanner {
     private stopScanning = () => {
         this.state.status = STATUS.DETECTION_DONE;
 
-        // stop async decode processes started by each filter
-        for (const interval of Array.from(this.intervals)) {
-            clearInterval(interval);
-            this.intervals.delete(interval);
+        // stop web worker
+        if (this.scanWorker) {
+            this.scanWorker.terminate();
         }
     };
 
@@ -554,7 +567,9 @@ export class PskBarcodeScanner {
 
             await this.onCanvasPlay();
 
-            await this.startScanningUsingFrames();
+            await this.createFilters();
+
+            await this.scan();
 
             return;
         }
@@ -562,10 +577,10 @@ export class PskBarcodeScanner {
         this.frame.source = image;
 
         drawFrameOnCanvas(this.frame.source, this.frame.canvas, {
-            stopInternalCropping: this.stopInternalCropping
+            stopInternalCropping: this.stopInternalCropping,
         });
 
-        await Promise.all(this.frame.filters.map(filter => filter()));
+        await this.scan();
     }
 
     // Lifecycle
@@ -581,6 +596,14 @@ export class PskBarcodeScanner {
             this.devices = await BrowserMultiFormatReader.listVideoInputDevices();
         } catch (error) {
             console.error("[psk-barcode-scanner] Error while getting video devices", error);
+        }
+
+        if (this.host.hasAttribute("results")) {
+            this.useMetadata = true;
+        }
+
+        if (this.useWebWorker) {
+            this.scanWorker = new Worker("webcardinal/extended/cardinal-barcode/worker/scan-worker.js");
         }
 
         if (this.useFrames) {
@@ -617,7 +640,9 @@ export class PskBarcodeScanner {
                 // request an animation frame
                 await waitUntilAnimationFrameIsPossible();
 
-                await this.startScanning(this.activeDeviceId);
+                if (!this.useFrames) {
+                    await this.startVideoStream(this.activeDeviceId);
+                }
             }
         }
     }

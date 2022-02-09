@@ -18,21 +18,28 @@ export namespace Components {
           * The model-handler scope that will be updated with the retrieved data from the scanner.
          */
         "data": string;
-        /**
-          * Decides if internal status of component is logged.
-         */
-        "noLogs": boolean;
         "setFrame": (src: string) => Promise<void>;
         /**
           * Decides if a screenshot is made after scanning.
          */
         "snapVideo": boolean;
+        /**
+          * Decides if the received frame should be cropped according with the screen aspect-ration.
+         */
         "stopInternalCropping": boolean;
         "switchCamera": () => Promise<void>;
         /**
           * If <code>true</code>, setFrames can be used and custom frames will be scanned.
          */
         "useFrames": boolean;
+        /**
+          * Decides if internal status of component is logged into the console.
+         */
+        "useLogs": boolean;
+        /**
+          * If <code>true</code>, a Web Worker (scanner-worker.js) will be instantiated. Its purpose is to decode codes.  If <code>false</code> decoding will take place in the main thread.
+         */
+        "useWebWorker": boolean;
     }
 }
 declare global {
@@ -67,18 +74,25 @@ declare namespace LocalJSX {
          */
         "data"?: string;
         /**
-          * Decides if internal status of component is logged.
-         */
-        "noLogs"?: boolean;
-        /**
           * Decides if a screenshot is made after scanning.
          */
         "snapVideo"?: boolean;
+        /**
+          * Decides if the received frame should be cropped according with the screen aspect-ration.
+         */
         "stopInternalCropping"?: boolean;
         /**
           * If <code>true</code>, setFrames can be used and custom frames will be scanned.
          */
         "useFrames"?: boolean;
+        /**
+          * Decides if internal status of component is logged into the console.
+         */
+        "useLogs"?: boolean;
+        /**
+          * If <code>true</code>, a Web Worker (scanner-worker.js) will be instantiated. Its purpose is to decode codes.  If <code>false</code> decoding will take place in the main thread.
+         */
+        "useWebWorker"?: boolean;
     }
     interface IntrinsicElements {
         "psk-barcode-generator": PskBarcodeGenerator;

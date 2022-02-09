@@ -206,6 +206,15 @@ export async function loadFrame(src: string) {
     });
 }
 
+export async function timeout(time) {
+    return new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+            resolve();
+            clearTimeout(timeout);
+        }, time);
+    });
+}
+
 export function captureFrame(canvas: HTMLCanvasElement) {
     if (canvas.id === "invertedSymbols") {
         filters.invertedSymbolsFilter({ canvas });
