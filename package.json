@@ -27,10 +27,6 @@
     "url": "git+https://github.com/webcardinal/cardinal-barcode.git"
   },
   "license": "MIT",
-  "dependencies": {
-    "@zxing/browser": "^0.0.10",
-    "@zxing/library": "^0.19.1"
-  },
   "prettier": {
     "printWidth": 120
   }

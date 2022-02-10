@@ -22,6 +22,6 @@ addEventListener("message", (e) => {
         const result = scanner.decodeBitmap(bitmap);
         postMessage({ message: "successful decoding", result, filterId, metadata: { imageData, width, height }});
     } catch (error) {
-        postMessage({ message: "failed decoding", error, filterId });
+        postMessage({ message: "failed decoding", error: error.message, filterId });
     }
 });

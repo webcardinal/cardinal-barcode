@@ -1,6 +1,5 @@
-import { Component, Prop, State, Element, Method, h } from "@stencil/core";
+import { Component, Element, h, Method, Prop, State } from "@stencil/core";
 import type { HTMLStencilElement } from "@stencil/core/internal";
-import { BrowserMultiFormatReader } from "@zxing/browser";
 
 import { BindModel } from "@cardinal/internals";
 
@@ -11,6 +10,7 @@ import {
     createElement,
     drawFrameOnCanvas,
     getFromLocalStorage,
+    listVideoInputDevices,
     loadFrame,
     setInLocalStorage,
     setVideoStream,
@@ -20,25 +20,33 @@ import {
     waitUntilElementIsVisibleInViewport,
 } from "./psk-barcode-scanner.utils";
 import style, { getCleanupStyleForShadowDOM } from "./psk-barcode-scanner.styles";
-import filters from "./psk-barcode-scanner.filters";
 import type { FilterProps } from "./psk-barcode-scanner.filters";
+import filters from "./psk-barcode-scanner.filters";
 import { InternalState, STATUS } from "./psk-barcode-scanner.status";
+
+type Filter = {
+    filterId: string;
+    filterAction: Function;
+};
 
 type Frame = {
     canvas: HTMLCanvasElement;
     source: HTMLImageElement | HTMLVideoElement;
     points: number[];
-    filters: Function[];
+    filters: Filter[];
 };
 
 const KEY_ACTIVE_DEVICE = "psk-scanner-device-id";
+const KEY_NO_DECODING = "No MultiFormat Readers were able to detect the code.";
+const KEY_ZXING_PATH = "webcardinal/extended/cardinal-barcode/worker/zxing-browser.min.js"; // v0.0.10
+const KEY_WEB_WORKER_PATH = "webcardinal/extended/cardinal-barcode/worker/scan-worker.js";
 
-// INTERVAL_BETWEEN_SCANS is used when Web Workers are deliberate disabled
+// INTERVAL_BETWEEN_SCANS is used only when Web Workers are deliberate disabled
 // const INTERVAL_BETWEEN_SCANS = 1000;   // 1fr/s
-const INTERVAL_BETWEEN_SCANS = 250;       // 4fr/s
 // const INTERVAL_BETWEEN_SCANS = 125;    // 8fr/s
 // const INTERVAL_BETWEEN_SCANS = 25;     // 40fr/s
 // const INTERVAL_BETWEEN_SCANS = 50 / 3; // 60fs/s
+const INTERVAL_BETWEEN_SCANS = 250; // 4fr/s
 
 const DEV_FLAGS = {
     ACTIVATE_INTERNAL_CANVASES: "dev-activate-internal-canvases",
@@ -129,7 +137,7 @@ export class PskBarcodeScanner {
         filters: [],
     };
 
-    private scanner: BrowserMultiFormatReader;
+    private scanner;
 
     private scanWorker: Worker;
 
@@ -145,7 +153,7 @@ export class PskBarcodeScanner {
         });
     }
 
-    // Pre-rendering...
+    // Pre-rendering or loading...
 
     private initializeReferencesToElements = () => {
         const container = this.host.shadowRoot.querySelector("#container") as HTMLDivElement;
@@ -162,6 +170,19 @@ export class PskBarcodeScanner {
 
         this.container = container;
         this.video = video;
+    };
+
+    private initializeScanningMethod = async () => {
+        if (this.useWebWorker) {
+            if (!this.scanWorker) {
+                this.scanWorker = new Worker(KEY_WEB_WORKER_PATH);
+            }
+            return;
+        }
+
+        if (this.scanWorker) {
+            this.scanWorker.terminate();
+        }
     };
 
     private createSlotElement = (name) => {
@@ -243,6 +264,24 @@ export class PskBarcodeScanner {
 
     // Event handlers
 
+    private onZXingBrowserLoad = async () => {
+        const hints = new Map();
+        hints.set(3, true); // TRY_HARDER
+        this.scanner = new window.ZXingBrowser.BrowserMultiFormatReader(hints);
+
+        // this mechanism is not recommended since de UI thread is slowed down
+        // also if ZXingBrowser is loaded faster then the creation of all the filters some intervals will also be applied
+        const scanInterval = async () => {
+            await this.scan();
+            await timeout(INTERVAL_BETWEEN_SCANS);
+
+            if (this.state.status === STATUS.DETECTION_IN_PROGRESS) {
+                await scanInterval();
+            }
+        };
+        await scanInterval();
+    };
+
     private onVideoPlay = async () => {
         this.cleanupOverlays();
         await this.drawOverlays();
@@ -305,10 +344,18 @@ export class PskBarcodeScanner {
             return;
         }
 
-        if (error && error.message !== "No MultiFormat Readers were able to detect the code.") {
-            console.error("[psk-barcode-scanner] Error while decoding", error);
+        if (typeof error === "string" && error === KEY_NO_DECODING) {
+            // this error can be received only from Web Worker
+            // error has typeof string because in Safari the error received from ZXing is not transferable
             return;
         }
+
+        if (typeof error === "object" && error.message === KEY_NO_DECODING) {
+            // this error can be received only from main tread
+            return;
+        }
+
+        console.error("[psk-barcode-scanner] Error while decoding", error);
     };
 
     private decode = async (canvas: HTMLCanvasElement, filterAction: Function | undefined) => {
@@ -331,12 +378,14 @@ export class PskBarcodeScanner {
 
         // decoding in main thread
         if (!this.useWebWorker) {
-            try {
-                const result = this.scanner.decodeFromCanvas(canvas) as any;
-                result.filter = { name: filterId, width: canvas.width, height: canvas.height };
-                this.decodeCallback(undefined, result, { canvas });
-            } catch (error) {
-                this.decodeCallback(error, undefined, undefined);
+            if (this.scanner) {
+                try {
+                    const result = this.scanner.decodeFromCanvas(canvas) as any;
+                    result.filter = { name: filterId, width: canvas.width, height: canvas.height };
+                    this.decodeCallback(undefined, result, { canvas });
+                } catch (error) {
+                    this.decodeCallback(error, undefined, undefined);
+                }
             }
             return;
         }
@@ -349,7 +398,7 @@ export class PskBarcodeScanner {
     };
 
     private scan = async () => {
-        await Promise.all(this.frame.filters.map((filter) => filter()));
+        await Promise.all(this.frame.filters.map(({ filterAction }) => filterAction()));
     };
 
     private createFilter = (filterId: string, filterAction: Function | undefined) => {
@@ -368,24 +417,11 @@ export class PskBarcodeScanner {
             this.host.shadowRoot.append(canvas);
         }
 
-        const filter = () => this.decode(canvas, filterAction);
-        this.frame.filters.push(filter);
+        this.frame.filters.push({ filterId, filterAction: () => this.decode(canvas, filterAction) });
     };
 
-    private createFilters = async () => {
-        if (!this.useWebWorker) {
-            const hints = new Map();
-            hints.set(3, true); // TRY_HARDER
-            this.scanner = new BrowserMultiFormatReader(hints);
-
-            // this mechanism is not recommended since de UI thread is slowed down
-            const scanInterval = async () => {
-                await this.scan();
-                await timeout(INTERVAL_BETWEEN_SCANS);
-                await scanInterval();
-            };
-            scanInterval();
-        } else {
+    private createFilters = () => {
+        if (this.useWebWorker) {
             const filters = new Set<string>();
             this.scanWorker.addEventListener("message", async (e) => {
                 const { error, result, filterId, metadata } = e.data;
@@ -494,7 +530,7 @@ export class PskBarcodeScanner {
             console.error("[psk-barcode-scanner] Error while getting activeDeviceId", error);
         }
 
-        await this.createFilters();
+        this.createFilters();
 
         await this.scan();
     };
@@ -518,7 +554,20 @@ export class PskBarcodeScanner {
         // stop web worker
         if (this.scanWorker) {
             this.scanWorker.terminate();
+            this.scanWorker = undefined;
         }
+
+        // clear frame context
+        if (this.host.hasAttribute(DEV_FLAGS.ACTIVATE_INTERNAL_CANVASES)) {
+            this.frame.filters.forEach(({ filterId }) => {
+                const canvas = this.host.shadowRoot.getElementById(filterId);
+                canvas && canvas.remove();
+            });
+        }
+        this.frame.filters = [];
+        delete this.frame.canvas;
+        delete this.frame.source;
+        delete this.frame.points;
     };
 
     // Public Methods
@@ -593,17 +642,13 @@ export class PskBarcodeScanner {
         this.state.status = STATUS.LOADING_CAMERAS;
 
         try {
-            this.devices = await BrowserMultiFormatReader.listVideoInputDevices();
+            this.devices = await listVideoInputDevices();
         } catch (error) {
             console.error("[psk-barcode-scanner] Error while getting video devices", error);
         }
 
         if (this.host.hasAttribute("results")) {
             this.useMetadata = true;
-        }
-
-        if (this.useWebWorker) {
-            this.scanWorker = new Worker("webcardinal/extended/cardinal-barcode/worker/scan-worker.js");
         }
 
         if (this.useFrames) {
@@ -633,6 +678,7 @@ export class PskBarcodeScanner {
                 // initialize references and listeners to DOM elements
                 this.initializeReferencesToElements();
                 this.attachOnClickForChangeCamera();
+                await this.initializeScanningMethod();
 
                 // wait until video is in viewport
                 await waitUntilElementIsVisibleInViewport(this.video, 50);
@@ -655,6 +701,7 @@ export class PskBarcodeScanner {
     render() {
         return [
             <style>{getCleanupStyleForShadowDOM()}</style>,
+            this.useWebWorker ? null : <script async src={KEY_ZXING_PATH} onLoad={this.onZXingBrowserLoad} />,
             <div part="base" style={style.base}>
                 <div id="container" part="container" style={style.container}>
                     <input type="file" accept="video/*" capture="environment" style={style.input} />

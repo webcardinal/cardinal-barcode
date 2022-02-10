@@ -215,6 +215,32 @@ export async function timeout(time) {
     });
 }
 
+export async function listVideoInputDevices() {
+    if (!window.navigator) {
+        throw new Error("Can't enumerate devices, navigator is not present.");
+    }
+
+    if (!window.navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+        throw new Error("Can't enumerate devices, method not supported.");
+    }
+
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    const videoDevices = [];
+    for (const device of devices) {
+        const { kind } = device;
+        if (kind !== 'videoinput') {
+            continue;
+        }
+        const deviceId = device.deviceId;
+        const label = device.label || `Video device ${videoDevices.length + 1}`;
+        const groupId = device.groupId;
+        const videoDevice = { deviceId, label, kind, groupId };
+        videoDevices.push(videoDevice);
+    }
+    return videoDevices;
+}
+
 export function captureFrame(canvas: HTMLCanvasElement) {
     if (canvas.id === "invertedSymbols") {
         filters.invertedSymbolsFilter({ canvas });

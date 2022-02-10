@@ -27,28 +27,11 @@
       "required": false
     },
     {
-      "name": "noLogs",
-      "type": "boolean",
-      "mutable": false,
-      "attr": "no-logs",
-      "reflectToAttr": false,
-      "docs": "Decides if internal status of component is logged.",
-      "docsTags": [],
-      "default": "false",
-      "values": [
-        {
-          "type": "boolean"
-        }
-      ],
-      "optional": false,
-      "required": false
-    },
-    {
       "name": "snapVideo",
       "type": "boolean",
       "mutable": false,
       "attr": "snap-video",
-      "reflectToAttr": true,
+      "reflectToAttr": false,
       "docs": "Decides if a screenshot is made after scanning.",
       "docsTags": [],
       "default": "false",
@@ -65,8 +48,8 @@
       "type": "boolean",
       "mutable": false,
       "attr": "stop-internal-cropping",
-      "reflectToAttr": true,
-      "docs": "",
+      "reflectToAttr": false,
+      "docs": "Decides if the received frame should be cropped according with the screen aspect-ration.",
       "docsTags": [],
       "default": "false",
       "values": [
@@ -86,6 +69,40 @@
       "docs": "If <code>true</code>, setFrames can be used and custom frames will be scanned.",
       "docsTags": [],
       "default": "false",
+      "values": [
+        {
+          "type": "boolean"
+        }
+      ],
+      "optional": false,
+      "required": false
+    },
+    {
+      "name": "useLogs",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "use-logs",
+      "reflectToAttr": false,
+      "docs": "Decides if internal status of component is logged into the console.",
+      "docsTags": [],
+      "default": "true",
+      "values": [
+        {
+          "type": "boolean"
+        }
+      ],
+      "optional": false,
+      "required": false
+    },
+    {
+      "name": "useWebWorker",
+      "type": "boolean",
+      "mutable": false,
+      "attr": "use-web-worker",
+      "reflectToAttr": true,
+      "docs": "If <code>true</code>, a Web Worker (scanner-worker.js) will be instantiated.\nIts purpose is to decode codes.\n\nIf <code>false</code> decoding will take place in the main thread.",
+      "docsTags": [],
+      "default": "true",
       "values": [
         {
           "type": "boolean"
